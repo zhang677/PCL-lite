@@ -3,5 +3,5 @@ Light-weight STeP in Python
 
 ## Env
 ```
-export PYTHONPATH="/home/zgh23/code/PCL-lite:$PYTHONPATH"
+export PYTHONPATH="/scratch/zgh23/PCL-lite:$PYTHONPATH"
 ```

@@ -114,3 +114,5 @@ def test():
     check_shape(S0)
     check_data(S0)
     
+def body(E0, E1):
+    pass
