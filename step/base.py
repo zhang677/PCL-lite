@@ -4,10 +4,28 @@ import torch
 
 def subsFullShape(dtype, shape, symbols):
     if isinstance(dtype, Buffer):
-        assert isinstance(dtype.dtype, Scalar)
-        shape = dtype.shape + shape
+        if isinstance(dtype.dtype, Scalar) or isinstance(dtype.dtype, Multihot):
+            shape = dtype.shape + shape
+        else:
+            raise ValueError("Buffer with non-scalar or non-multihot dtype is not supported.")
     else:
         shape = shape
+    return [s.subs(symbols) if not isinstance(s, int) else s for s in shape]
+
+def subsFlattenFullShape(dtype, shape, symbols):
+    if isinstance(dtype, Buffer):
+        if isinstance(dtype.dtype, Scalar):
+            shape = dtype.shape + shape
+        elif isinstance(dtype.dtype, Multihot):
+            shape = [dtype.length] + dtype.shape + shape
+        else: 
+            raise ValueError("Buffer with non-scalar or non-multihot dtype is not supported.")
+    elif isinstance(dtype, Scalar):
+        shape = shape
+    elif isinstance(dtype, Multihot):
+        shape = [dtype.length] + shape
+    else:
+        raise ValueError("dtype is not supported.")
     return [s.subs(symbols) if not isinstance(s, int) else s for s in shape]
 
 def subsOuterShape(shape, symbols):
@@ -42,6 +60,19 @@ class Tile(Element):
         if not isinstance(other, Tile):
             return False
         return self.dtype == other.dtype and self.shape == other.shape
+    
+class Multihot(Element):
+    def __init__(self, dtype, length: Symbol):
+        super().__init__(dtype)
+        self.length = length
+    
+    def __str__(self):
+        return f"Multihot: {self.dtype}, {self.length}"
+
+    def __eq__(self, other):
+        if not isinstance(other, Multihot):
+            return False
+        return self.dtype == other.dtype and self.length == other.length
 
 class Buffer:
     def __init__(self, dtype, shape: list[Symbol]):
@@ -101,6 +132,17 @@ class Stream:
 
     def __str__(self):
         return f"Stream: {self.name}, {self.dtype}, {self.rank}, [{', '.join([str(s) for s in self.shape])}]"
+    
+    # Tried to compromise LLM hallucination e.g. /scratch/zgh23/pcl-db/report/par-opt-4o-0/G06_64/1203093320/gpt-4o-2024-11-20/failure_impl_rep_0_test.py
+    # However, it turns out that this happens in a very low chance. So, I will not implement this for now.
+    # Let Stream be subscriptable when dtype is STuple
+    # def __getitem__(self, key):
+    #     if not isinstance(self.dtype, STuple):
+    #         raise TypeError("Stream is not subscriptable when dtype is not STuple.")
+    #     single_stream = Stream(self.name+f"_{key}", self.dtype[key], self.rank, self.shape)
+    #     single_stream.data = [self.data[key]]
+    #     single_stream.ctx = self.ctx
+    #     return single_stream
 
     def setData(self, data: list[torch.Tensor]):
         self.data = data

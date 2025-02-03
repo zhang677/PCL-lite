@@ -1,0 +1,34 @@
+test_name: bmm_01
+inputs:
+  - name: E0
+    dtype: fp32
+    dims: [N, K, M]
+    data_gen: torch.randn
+  - name: E1
+    dtype: fp32
+    dims: [D, K, M]
+    data_gen: torch.randn
+
+fns:
+  - name: OuterProduct
+    apply: |
+      return [torch.einsum('i,j->ij', input[0], input[1])]
+    input_dtype: ["Buffer(fp32, [N])", "Buffer(fp32, [D])"]
+    output_dtype: Buffer(fp32, [D, N])
+    func_name: fn_outer_product
+  
+  - name: Sum
+    apply: |
+      return [state[0] + input[0]]
+    init: [0]
+    input_dtype: Buffer(fp32, [D, N])
+    output_dtype: Buffer(fp32, [D, N])
+    func_name: fn_sum
+
+outputs:
+  - name: S0
+    dtype: fp32
+    dims: [D, N, M]
+    data_transform:
+      - |
+        torch.einsum('mkn,mkd->mnd', input_data['E0'], input_data['E1'])

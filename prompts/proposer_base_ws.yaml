@@ -1,0 +1,601 @@
+general:
+  desc: |
+    Streaming Tensor Programs (STeP) provides a higher-level abstraction for dataflow systems. 
+
+ops:
+  - name: Promote
+    desc: |
+      Promote is a primitive operation that increases the dimensionality of a stream by inserting new dimensions of size 1.
+      The new dimensions are inserted at the position specified by the argument `b`.
+      The shape of the output stream is the same as the input stream, except that the dimension at position `b` is increased by 1.
+
+    examples:
+      - |
+        def prepare():
+            E0 = step.Stream("E0", step.Scalar("float"), 1, [M, N])
+            E0.ctx = ctx
+            E0.data = [input_data['E0']]
+            return E0
+        def check_shape(S0):
+            output_dtype_S0 = step.Scalar("float")
+            assert S0.dtype == step.Scalar("float"), f"The output dtype should be {output_dtype_S0.dtype} but got {S0.dtype}"
+            assert S0.shape == [M, 1, N], f"The output shape should be [M, 1, N] but got {S0.shape}"
+            
+        def check_data(S0):
+            S0_data_0 = input_data['E0'].unsqueeze(1)
+            torch.testing.assert_close(S0.data[0], S0_data_0)
+
+        def test():
+            E0 = prepare()
+            S0 = body(E0)
+            check_shape(S0)
+            check_data(S0)
+    
+        def body(E0):
+            E1 = step.Promote(b=1).apply(E0)
+            return E1
+  - name: Map
+    desc: |
+      Map is a primitive operation that applies a function to each element of a stream.
+      The function is applied independently to each element of the input stream, and the output stream has the same shape as the input stream.
+    
+    examples:
+      - | 
+        def prepare():
+            E0 = step.Stream("E0", step.Scalar("float"), 1, [M, N])
+            E0.ctx = ctx
+            E0.data = [input_data['E0']]
+            return E0
+        def check_shape(S0):
+            output_dtype_S0 = step.Scalar("float")
+            assert S0.dtype == step.Scalar("float"), f"The output dtype should be {output_dtype_S0.dtype} but got {S0.dtype}"
+            assert S0.shape == [M, N], f"The output shape should be [M, N] but got {S0.shape}"
+            
+        def check_data(S0):
+            
+            S0_data_0 = input_data['E0'] ** 2
+            torch.testing.assert_close(S0.data[0], S0_data_0)
+            
+
+        def test():
+            E0 = prepare()
+            S0 = body(E0)
+            check_shape(S0)
+            check_data(S0)
+            
+
+        def body(E0):
+            E1 = step.Map(fn=fn_square).apply(E0)
+            return E1
+
+  - name: Zip
+    desc: |
+      Zip is a primitive operation that combines two streams element-wise.
+      The two input streams must have the same shape, and the output stream has the same shape as the input streams.
+    
+    examples:
+      - | 
+        def prepare():
+            E0 = step.Stream("E0", step.Scalar("float"), 1, [M, N])
+            E0.ctx = ctx
+            E0.data = [input_data['E0']]
+            
+            E1 = step.Stream("E1", step.Buffer(step.Scalar("float"), [D]), 1, [M, N])
+            E1.ctx = ctx
+            E1.data = [input_data['E1']]
+            return E0, E1
+        def check_shape(S0):
+            output_dtype_S0 = step.STuple((step.Scalar("float"), step.Buffer(step.Scalar("float"), [D])))
+            assert S0.dtype == step.STuple((step.Scalar("float"), step.Buffer(step.Scalar("float"), [D]))), f"The output dtype should be {output_dtype_S0.dtype} but got {S0.dtype}"
+            assert S0.shape == [M, N], f"The output shape should be [M, N] but got {S0.shape}"
+            
+        def check_data(S0):
+            S0_data_0 = input_data['E0']
+            torch.testing.assert_close(S0.data[0], S0_data_0)
+            
+            S0_data_1 = input_data['E1']
+            torch.testing.assert_close(S0.data[1], S0_data_1)
+
+        def test():
+            E0, E1 = prepare()
+            S0 = body(E0, E1)
+            check_shape(S0)
+            check_data(S0)
+            
+
+        def body(E0, E1):
+            E2 = step.Zip().apply((E0, E1))
+            return E2
+
+  - name: Accum
+    desc: |
+      Accum is a primitive operation that applies a function to a stream in a recursive manner.
+      The function is applied to the first element of the stream and the initial state to produce the first output element.
+      The function is then applied to the second element of the stream and the output of the previous application to produce the second output element, and so on.
+      The state is initialized at rank `b` of the input stream. The output stream's shape is the input stream's shape excluding the first `b` dimensions. 
+    
+    examples:
+      - |
+        def prepare():
+            E0 = step.Stream("E0", step.Scalar("float"), 1, [M, N])
+            E0.ctx = ctx
+            E0.data = [input_data['E0']]
+            return E0
+        def check_shape(S0):
+            output_dtype_S0 = step.Scalar("float")
+            assert S0.dtype == step.Scalar("float"), f"The output dtype should be {output_dtype_S0.dtype} but got {S0.dtype}"
+            assert S0.shape == [N], f"The output shape should be [N] but got {S0.shape}"
+            
+        def check_data(S0):
+            
+            S0_data_0 = torch.sum(input_data['E0'], 1, keepdim=False)
+            torch.testing.assert_close(S0.data[0], S0_data_0)
+
+        def test():
+            E0 = prepare()
+            S0 = body(E0)
+            check_shape(S0)
+            check_data(S0)
+
+        def body(E0):
+            E1 = step.Accum(fn=fn_sum, b=1).apply(E0)
+            return E1
+
+  - name: Streamify
+    desc: |
+      Streamify is a primitive operation that converts a stream of buffers into a stream of elements.
+    
+    examples:
+      - |
+        def prepare():
+            E0 = step.Stream("E0", step.Buffer(step.Scalar("float"), [D]), 1, [M, N])
+            E0.ctx = ctx
+            E0.data = [input_data['E0']]
+            return E0
+        def check_shape(S0):
+            output_dtype_S0 = step.Scalar("float")
+            assert S0.dtype == step.Scalar("float"), f"The output dtype should be {output_dtype_S0.dtype} but got {S0.dtype}"
+            assert S0.shape == [D, M, N], f"The output shape should be [D, M, N] but got {S0.shape}"
+            
+        def check_data(S0):
+            
+            S0_data_0 = input_data['E0']
+            torch.testing.assert_close(S0.data[0], S0_data_0)
+            
+
+        def test():
+            E0 = prepare()
+            S0 = body(E0)
+            check_shape(S0)
+            check_data(S0)
+            
+
+        def body(E0):
+            E1 = step.Streamify().apply(E0)
+            return E1
+    
+  - name: Scan
+    desc: |
+      Scan is a primitive operation that applies a function to a stream in a recursive manner, and output states at each step.
+      The function is applied to the first element of the stream and the initial state to produce the first output element.
+      The function is then applied to the second element of the stream and the output of the previous application to produce the second output element, and so on.
+      The state is initialized at rank `b` of the input stream. The output stream's shape is the same as the input stream's shape.
+    
+    examples:
+      - |
+        def prepare():
+            E0 = step.Stream("E0", step.Scalar("float"), 1, [M, N])
+            E0.ctx = ctx
+            E0.data = [input_data['E0']]
+            return E0
+        def check_shape(S0):
+            output_dtype_S0 = step.Scalar("float")
+            assert S0.dtype == step.Scalar("float"), f"The output dtype should be {output_dtype_S0.dtype} but got {S0.dtype}"
+            assert S0.shape == [M, N], f"The output shape should be [M, N] but got {S0.shape}"
+            
+        def check_data(S0):
+            
+            S0_data_0 = torch.cumprod(input_data['E0'], 1)
+            torch.testing.assert_close(S0.data[0], S0_data_0)
+            
+
+        def test():
+            E0 = prepare()
+            S0 = body(E0)
+            check_shape(S0)
+            check_data(S0)
+            
+
+        def body(E0):
+            E1 = step.Scan(fn=fn_mul, b=1).apply(E0)
+            return E1
+
+  - name: Copy
+    desc: |
+      Each stream can be only consumed once. Copy is a primitive operation that duplicates a stream.
+      Copy outputs two streams that are identical to the input stream.
+    
+    examples:
+      - |
+        def prepare():
+            E0 = step.Stream("E0", step.Buffer(step.Scalar("float"), [K]), 0, [D])
+            E0.ctx = ctx
+            E0.data = [input_data['E0']]
+            return E0
+        def check_shape(S0, S1):
+            assert S0.shape == [D]
+            assert S0.dtype == step.Buffer(step.Scalar("float"), [K])
+            
+            assert S1.shape == [D]
+            assert S1.dtype == step.Buffer(step.Scalar("float"), [K])
+            
+        def check_data(S0, S1):
+            S0_data_0 = input_data['E0']
+        
+            torch.testing.assert_close(S0.data[0], S0_data_0)
+            
+            S1_data_0 = input_data['E0']
+        
+            torch.testing.assert_close(S1.data[0], S1_data_0)
+            
+
+        def test():
+            E0 = prepare()
+            S0, S1 = body(E0)
+            check_shape(S0, S1)
+            check_data(S0, S1)
+            
+
+        def body(E0):
+            E1, E2 = step.Copy().apply(E0)
+            return E1, E2
+
+  - name: Bufferize
+    desc: |
+      Bufferize converts the innermost `a` dimensions of a stream into a buffer; the data is unchanged.
+      The output stream's shape is the input stream's shape with the innermost `a` dimensions removed.
+
+    examples:
+      - |
+        def prepare():
+            E0 = step.Stream("E0", step.Scalar("float"), 2, [D, M, N])
+            E0.ctx = ctx
+            E0.data = [input_data['E0']]
+            return E0
+        def check_shape(S0):
+            output_dtype_S0 = step.Buffer(step.Scalar("float"), [D])
+            assert S0.dtype == step.Buffer(step.Scalar("float"), [D]), f"The output dtype should be {output_dtype_S0.dtype} but got {S0.dtype}"
+            assert S0.shape == [M, N], f"The output shape should be [M, N] but got {S0.shape}"
+            
+        def check_data(S0):
+            
+            S0_data_0 = input_data['E0']
+            torch.testing.assert_close(S0.data[0], S0_data_0)
+            
+
+        def test():
+            E0 = prepare()
+            S0 = body(E0)
+            check_shape(S0)
+            check_data(S0)
+            
+
+        def body(E0):
+            E1 = step.Bufferize(a=1).apply(E0)
+            return E1
+  
+  - name: Repeat
+    desc: |
+      Repeat is a primitive that repeats each elements of input stream `n` times and add an extra dimension of size `n`.
+      It can only adds an extra dimension of size `n` to the innermost dimension of the input stream. 
+      If you want to add an extra dimension of size `n` to other dimensions, you can use Bufferize to make the target dimension the innermost dimension first.
+    
+    examples:
+      - |
+        def prepare():
+            E0 = step.Stream("E0", step.Scalar("float"), 1, [M, N])
+            E0.ctx = ctx
+            E0.data = [input_data['E0']]
+            return E0
+        def check_shape(S0):
+            output_dtype_S0 = step.Scalar("float")
+            assert S0.dtype == step.Scalar("float"), f"The output dtype should be {output_dtype_S0.dtype} but got {S0.dtype}"
+            assert S0.shape == [K, M, N], f"The output shape should be [K, M, N] but got {S0.shape}"
+            
+        def check_data(S0):
+            
+            S0_data_0 = input_data['E0'].unsqueeze(-1).repeat(1, 1, K_value)
+            torch.testing.assert_close(S0.data[0], S0_data_0)
+            
+
+        def test():
+            E0 = prepare()
+            S0 = body(E0)
+            check_shape(S0)
+            check_data(S0)
+            
+
+        def body(E0):
+            E1 = step.Repeat(n=K).apply(E0)
+            return E1
+  
+  - name: RepeatRef
+    desc: |
+      RepeatRef is a primitive that repeats the value in the data stream `n` times and add an extra dimension of size `n` where `n` equals to the size of the innermost dimension of the reference stream.
+
+    examples:
+      - |
+        def prepare():
+            E0 = step.Stream("E0", step.Scalar("float"), 0, [M])
+            E0.ctx = ctx
+            E0.data = [input_data['E0']]
+            
+            E1 = step.Stream("E1", step.Scalar("float"), 1, [N, M])
+            E1.ctx = ctx
+            E1.data = [input_data['E1']]
+            return E0, E1
+        def check_shape(S0):
+            output_dtype_S0 = step.Scalar("float")
+            assert S0.dtype == step.Scalar("float"), f"The output dtype should be {output_dtype_S0.dtype} but got {S0.dtype}"
+            assert S0.shape == [N, M], f"The output shape should be [N, M] but got {S0.shape}"
+            
+        def check_data(S0):
+            
+            S0_data_0 = input_data['E0'].unsqueeze(-1).expand_as(input_data['E1'])
+            torch.testing.assert_close(S0.data[0], S0_data_0)
+            
+
+        def test():
+            E0, E1 = prepare()
+            S0 = body(E0, E1)
+            check_shape(S0)
+            check_data(S0)
+            
+
+        def body(E0, E1):
+            E2 = step.RepeatRef().apply((E0, E1))
+            return E2
+
+  - name: Flatten
+    desc: |
+      Flatten is a primitive that collapses `L` dimensions with the adjacent inner dimension where `L` is a list of consecutive positive integers.
+      For example, if you want to flatten the dimension N and dimension N-1 together, L=(N).
+    
+    examples:
+      - |
+        def prepare():
+            E0 = step.Stream("E0", step.Scalar("float"), 2, [M, N, K])
+            E0.ctx = ctx
+            E0.data = [input_data['E0']]
+            return E0
+        def check_shape(S0):
+            output_dtype_S0 = step.Scalar("float")
+            assert S0.dtype == step.Scalar("float"), f"The output dtype should be {output_dtype_S0.dtype} but got {S0.dtype}"
+            assert S0.shape == [M, N*K], f"The output shape should be [M, N*K] but got {S0.shape}"
+            
+        def check_data(S0):
+            
+            S0_data_0 = input_data['E0'].view(-1, input_data['E0'].size(2))
+            torch.testing.assert_close(S0.data[0], S0_data_0)
+            
+
+        def test():
+            E0 = prepare()
+            S0 = body(E0)
+            check_shape(S0)
+            check_data(S0)
+            
+
+        def body(E0):
+            E1 = step.Flatten(L=[2,]).apply(E0)
+            return E1
+
+  - name: Partition and Merge
+    desc: |
+      Partition is a primitive that appends the elements of the data stream to the output list of streams based on the multi-hot value of the reference stream.
+      Merge is a primitive that collects elements from the input list of streams based on the multi-hot value of the reference stream, and reduces the elements using the init and apply functions.
+      Partition and Merge are only used in pairs.
+
+    examples:
+      - |
+        class Expert0(step.Fn):
+            def __init__(self, input, output):
+                super().__init__("Expert0", input, output)
+            
+            def apply(self, input):
+                return [gelu(input[0] @ input_data['W0'])]
+                
+            
+        fn_expert0 = Expert0(step.Buffer(step.Scalar("float"), [K]), step.Buffer(step.Scalar("float"), [K]))
+            
+
+        class Expert1(step.Fn):
+            def __init__(self, input, output):
+                super().__init__("Expert1", input, output)
+            
+            def apply(self, input):
+                return [gelu(input[0] @ input_data['W1'])]
+                
+            
+        fn_expert1 = Expert1(step.Buffer(step.Scalar("float"), [K]), step.Buffer(step.Scalar("float"), [K]))
+            
+
+        class Sum(step.Fn):
+            def __init__(self, input, output):
+                super().__init__("Sum", input, output)
+
+            def getInit(self):
+                return [torch.zeros(K_value)]
+
+            def apply(self, state, input):
+                return [input[0] + state[0]]
+                
+            
+        fn_sum = Sum(step.Buffer(step.Scalar("float"), [K]), step.Buffer(step.Scalar("float"), [K]))
+            
+
+        def prepare():
+            E0 = step.Stream("E0", step.Buffer(step.Scalar("float"), [K]), 0, [M])
+            E0.ctx = ctx
+            E0.data = [input_data['E0']]
+            
+            E1 = step.Stream("E1", step.Multihot(step.Scalar("float"), E), 0, [M])
+            E1.ctx = ctx
+            E1.data = [input_data['E1']]
+            return E0, E1
+        def check_shape(S0):
+            output_dtype_S0 = step.Buffer(step.Scalar("float"), [K])
+            assert S0.dtype == step.Buffer(step.Scalar("float"), [K]), f"The output dtype should be {output_dtype_S0.dtype} but got {S0.dtype}"
+            assert S0.shape == [M], f"The output shape should be [M] but got {S0.shape}"
+            
+        def check_data(S0):
+            index_tensor = input_data['E1'].movedim(-1, 0)
+            W = torch.stack([input_data['W0'], input_data['W1']])
+            hidden = torch.einsum('mk,ekh->emh', input_data['E0'], W)
+            hidden = gelu(hidden)
+            S0_data_0 = (index_tensor.unsqueeze(-1) * hidden).sum(dim=0)
+            torch.testing.assert_close(S0.data[0], S0_data_0)
+            
+
+        def test():
+            E0, E1 = prepare()
+            S0 = body(E0, E1)
+            check_shape(S0)
+            check_data(S0)
+            
+
+        def body(E0, E1):
+            expert_fns = [fn_expert0, fn_expert1]
+            E1_0, E1_1 = step.Copy().apply(E1)
+            E2 = step.Partition(N=E_value).apply((E0, E1_0))
+            E3 = [step.Map(fn=f).apply(e) for f, e in zip(expert_fns, E2)]
+            E4 = step.Merge(fn=fn_sum).apply((E3, E1_1))
+            return E4
+
+patterns:
+  - name: Dimension placeholder
+    desc: |
+      When the primitive requires the stream to have rank > 1, a Promote&Flatten pair can wrap the primitives to adjust the rank.
+      This pattern is useful for Accum and Bufferize primitives.
+    examples:
+      - |
+        class Sum(step.Fn):
+            def __init__(self, input, output):
+                super().__init__("Sum", input, output)
+
+            def getInit(self):
+                return [torch.zeros(D_value)]
+
+            def apply(self, state, input):
+                return [state[0] + input[0]]
+                
+            
+        fn_sum = Sum(step.Buffer(step.Scalar("float"), [D]), step.Buffer(step.Scalar("float"), [D]))
+            
+
+        def prepare():
+            E0 = step.Stream("E0", step.Buffer(step.Scalar("float"), [D]), 0, [N])
+            E0.ctx = ctx
+            E0.data = [input_data['E0']]
+            return E0
+        def check_shape(S0):
+            output_dtype_S0 = step.Scalar("float")
+            assert S0.dtype == step.Scalar("float"), f"The output dtype should be {output_dtype_S0.dtype} but got {S0.dtype}"
+            assert S0.shape == [D], f"The output shape should be [D] but got {S0.shape}"
+            
+        def check_data(S0):
+            
+            S0_data_0 = torch.sum(input_data['E0'], 0, keepdim=False)
+            torch.testing.assert_close(S0.data[0], S0_data_0)
+            
+
+        def test():
+            E0 = prepare()
+            S0 = body(E0)
+            check_shape(S0)
+            check_data(S0)
+            
+
+        def body(E0):
+            E1 = step.Promote(b=1).apply(E0)
+            E2 = step.Accum(fn=fn_sum, b=1).apply(E1)
+            E3 = step.Streamify().apply(E2)
+            E4 = step.Flatten(L=[1,]).apply(E3)
+            return E4
+      - |
+        class Square(step.Fn):
+            def __init__(self, input, output):
+                super().__init__("Square", input, output)
+            
+            def apply(self, input):
+                return [input[0] ** 2]
+                
+            
+        fn_square = Square(step.Buffer(step.Scalar("float"), [M, N]), step.Buffer(step.Scalar("float"), [M, N]))
+            
+
+        def prepare():
+            E0 = step.Stream("E0", step.Scalar("float"), 1, [M, N])
+            E0.ctx = ctx
+            E0.data = [input_data['E0']]
+            return E0
+        def check_shape(S0):
+            output_dtype_S0 = step.Scalar("float")
+            assert S0.dtype == step.Scalar("float"), f"The output dtype should be {output_dtype_S0.dtype} but got {S0.dtype}"
+            assert S0.shape == [M, N], f"The output shape should be [M, N] but got {S0.shape}"
+            
+        def check_data(S0):
+            
+            S0_data_0 = input_data['E0'] ** 2
+            torch.testing.assert_close(S0.data[0], S0_data_0)
+            
+
+        def test():
+            E0 = prepare()
+            S0 = body(E0)
+            check_shape(S0)
+            check_data(S0)
+            
+
+        def body(E0):
+            E1 = step.Promote(b=2).apply(E0) # E1: {dtype: fp32, dims: [M, N, 1]}
+            E2 = step.Bufferize(a=2).apply(E1) # E2: {dtype: Buffer(fp32, [M, N]), dims: [1]}
+            E3 = step.Map(fn=fn_square).apply(E2) # E3: {dtype: Buffer(fp32, [M, N]), dims: [1]}
+            E4 = step.Streamify().apply(E3) # E4: {dtype: fp32, dims: [M, N, 1]}
+            E5 = step.Flatten(L=[2,]).apply(E4) # E5: {dtype: fp32, dims: [M, N]}
+            return E5
+
+  - name: Stashing dimension
+    desc: |
+      When the pritmives require a non-one dimension to be inserted as a non-innermost dimension, a Bufferize&Streamify pair can wrap the primitives to adjust the dimension.
+      This pattern is useful for Repeat and RepeatRef primitives.
+    examples:
+      - |
+        def prepare():
+            E0 = step.Stream("E0", step.Scalar("float"), 2, [M, N, K])
+            E0.ctx = ctx
+            E0.data = [input_data['E0']]
+            return E0
+        def check_shape(S0):
+            output_dtype_S0 = step.Scalar("float")
+            assert S0.dtype == step.Scalar("float"), f"The output dtype should be {output_dtype_S0.dtype} but got {S0.dtype}"
+            assert S0.shape == [M, N, D, K], f"The output shape should be [M, N, D, K] but got {S0.shape}"
+            
+        def check_data(S0):
+            
+            S0_data_0 = input_data['E0'].unsqueeze(1).repeat(1, D_value, 1, 1)
+            torch.testing.assert_close(S0.data[0], S0_data_0)
+            
+
+        def test():
+            E0 = prepare()
+            S0 = body(E0)
+            check_shape(S0)
+            check_data(S0)
+            
+
+        def body(E0):
+            E1 = step.Bufferize(a=2).apply(E0) # E1: {dtype: Buffer(fp32, [M, N]), dims: [K]}
+            E2 = step.Repeat(n=D).apply(E1) # E2: {dtype: Buffer(fp32, [M, N]), dims: [D, K]}
+            E3 = step.Streamify().apply(E2) # E3: {dtype: fp32, dims: [M, N, D, K]}
+            return E3

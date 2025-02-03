@@ -1,7 +1,8 @@
 # PCL-lite
 Light-weight STeP in Python
 
-## Env
+## Validation
+Validate the test and reference yamls under `/benchmark` and `/prompts`
 ```
-export PYTHONPATH="/scratch/zgh23/PCL-lite:$PYTHONPATH"
+./scripts/validate.sh
 ```

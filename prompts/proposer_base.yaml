@@ -1,0 +1,446 @@
+general:
+  desc: |
+    Streaming Tensor Programs (STeP) provides a higher-level abstraction for dataflow systems. 
+
+ops:
+  - name: Promote
+    desc: |
+      Promote is a primitive operation that increases the dimensionality of a stream by inserting new dimensions of size 1.
+      The new dimensions are inserted at the position specified by the argument `b`.
+      The shape of the output stream is the same as the input stream, except that the dimension at position `b` is increased by 1.
+
+    examples:
+      - inputs:
+        - name: E0
+          dtype: fp32
+          dims: [M, N]
+          data_gen: torch.rand
+        outputs:
+        - name: S0
+          dtype: fp32
+          dims: [M, 1, N]
+          data_transform:
+            - |
+              input_data['E0'].unsqueeze(1)
+        impl: |
+          E1 = step.Promote(b=1).apply(E0)
+          return E1
+  - name: Map
+    desc: |
+      Map is a primitive operation that applies a function to each element of a stream.
+      The function is applied independently to each element of the input stream, and the output stream has the same shape as the input stream.
+    
+    examples:
+      - inputs:
+        - name: E0
+          dtype: fp32
+          dims: [M, N]
+          data_gen: torch.rand
+        fns:
+        - name: Square
+          apply: |
+            return [input[0] ** 2]
+          input_dtype: fp32
+          output_dtype: fp32
+          func_name: fn_square
+        outputs:
+        - name: S0
+          dtype: fp32
+          dims: [M, N]
+          data_transform:
+            - |
+              input_data['E0'] ** 2
+        impl: |
+          E1 = step.Map(fn=fn_square).apply(E0)
+          return E1
+
+  - name: Zip
+    desc: |
+      Zip is a primitive operation that combines two streams element-wise.
+      The two input streams must have the same shape, and the output stream has the same shape as the input streams.
+    
+    examples:
+      - inputs:
+        - name: E0
+          dtype: fp32
+          dims: [M, N]
+          data_gen: torch.rand
+        - name: E1
+          dtype: Buffer(fp32, [D])
+          dims: [M, N]
+          data_gen: torch.rand
+        outputs:
+        - name: S0
+          dtype: [fp32, "Buffer(fp32, [D])"]
+          dims: [M, N]
+          data_transform:
+            - |
+              input_data['E0']
+            - |
+              input_data['E1']
+        impl: |
+          E2 = step.Zip().apply((E0, E1))
+          return E2
+
+  - name: Accum
+    desc: |
+      Accum is a primitive operation that applies a function to a stream in a recursive manner.
+      The function is applied to the first element of the stream and the initial state to produce the first output element.
+      The function is then applied to the second element of the stream and the output of the previous application to produce the second output element, and so on.
+      The state is initialized at rank `b` of the input stream. The output stream's shape is the input stream's shape excluding the first `b` dimensions. 
+    
+    examples:
+      - inputs:
+        - name: E0
+          dtype: fp32
+          dims: [M, N]
+          data_gen: torch.rand
+        fns:
+        - name: Sum
+          apply: |
+            return [state[0] + input[0]]
+          init: [0]
+          input_dtype: fp32
+          output_dtype: fp32
+          func_name: fn_sum
+        outputs:
+        - name: S0
+          dtype: fp32
+          dims: [N]
+          data_transform:
+            - |
+              torch.sum(input_data['E0'], 1, keepdim=False)
+        impl: |
+          E1 = step.Accum(fn=fn_sum, b=1).apply(E0)
+          return E1
+
+  - name: Streamify
+    desc: |
+      Streamify is a primitive operation that converts a stream of buffers into a stream of elements.
+    
+    examples:
+      - inputs:
+        - name: E0
+          dtype: Buffer(fp32, [D])
+          dims: [M, N]
+          data_gen: torch.rand
+        outputs:
+        - name: S0
+          dtype: fp32
+          dims: [D, M, N]
+          data_transform:
+            - |
+              input_data['E0']
+        impl: |
+          E1 = step.Streamify().apply(E0)
+          return E1
+    
+  - name: Scan
+    desc: |
+      Scan is a primitive operation that applies a function to a stream in a recursive manner, and output states at each step.
+      The function is applied to the first element of the stream and the initial state to produce the first output element.
+      The function is then applied to the second element of the stream and the output of the previous application to produce the second output element, and so on.
+      The state is initialized at rank `b` of the input stream. The output stream's shape is the same as the input stream's shape.
+    
+    examples:
+      - inputs:
+        - name: E0
+          dtype: fp32
+          dims: [M, N]
+          data_gen: torch.rand
+        fns:
+        - name: Mul
+          apply: |
+            return [state[0] * input[0]]
+          init: [1]
+          input_dtype: fp32
+          output_dtype: fp32
+          func_name: fn_mul
+        outputs:
+        - name: S0
+          dtype: fp32
+          dims: [M, N]
+          data_transform:
+            - |
+              torch.cumprod(input_data['E0'], 1)
+        impl: |
+          E1 = step.Scan(fn=fn_mul, b=1).apply(E0)
+          return E1
+
+  - name: Copy
+    desc: |
+      Each stream can be only consumed once. Copy is a primitive operation that duplicates a stream.
+      Copy outputs two streams that are identical to the input stream.
+    
+    examples:
+      - inputs:
+        - name: E0
+          dtype: Buffer(fp32, [K])
+          dims: [D]
+          data_gen: torch.rand
+        outputs:
+        - name: S0
+          dtype: Buffer(fp32, [K])
+          dims: [D]
+          data_transform:
+            - |
+              input_data['E0']
+        - name: S1
+          dtype: Buffer(fp32, [K])
+          dims: [D]
+          data_transform:
+            - |
+              input_data['E0']
+        impl: |
+          E1, E2 = step.Copy().apply(E0)
+          return E1, E2
+
+  - name: Bufferize
+    desc: |
+      Bufferize converts the innermost `a` dimensions of a stream into a buffer; the data is unchanged.
+      The output stream's shape is the input stream's shape with the innermost `a` dimensions removed.
+
+    examples:
+      - inputs:
+        - name: E0
+          dtype: fp32
+          dims: [D, M, N]
+          data_gen: torch.rand
+        outputs:
+        - name: S0
+          dtype: Buffer(fp32, [D])
+          dims: [M, N]
+          data_transform:
+            - |
+              input_data['E0']
+        impl: |
+          E1 = step.Bufferize(a=1).apply(E0)
+          return E1
+  
+  - name: Repeat
+    desc: |
+      Repeat is a primitive that repeats each elements of input stream `n` times and add an extra dimension of size `n`.
+      It can only adds an extra dimension of size `n` to the innermost dimension of the input stream. 
+      If you want to add an extra dimension of size `n` to other dimensions, you can use Bufferize to make the target dimension the innermost dimension first.
+    
+    examples:
+      - inputs:
+        - name: E0
+          dtype: fp32
+          dims: [M, N]
+          data_gen: torch.rand
+        outputs:
+        - name: S0
+          dtype: fp32
+          dims: [K, M, N]
+          data_transform:
+            - |
+              input_data['E0'].unsqueeze(-1).repeat(1, 1, K_value)
+        impl: |
+          E1 = step.Repeat(n=K).apply(E0)
+          return E1
+  
+  - name: RepeatRef
+    desc: |
+      RepeatRef is a primitive that repeats the value in the data stream `n` times and add an extra dimension of size `n` where `n` equals to the size of the innermost dimension of the reference stream.
+
+    examples:
+      - inputs:
+        - name: E0
+          dtype: fp32
+          dims: [M]
+          data_gen: torch.rand
+        - name: E1
+          dtype: fp32
+          dims: [N, M]
+          data_gen: torch.rand
+        outputs:
+        - name: S0
+          dtype: fp32
+          dims: [N, M]
+          data_transform:
+            - |
+              input_data['E0'].unsqueeze(-1).expand_as(input_data['E1'])
+        impl: |
+          E2 = step.RepeatRef().apply((E0, E1))
+          return E2
+
+  - name: Flatten
+    desc: |
+      Flatten is a primitive that collapses `L` dimensions with the adjacent inner dimension where `L` is a list of consecutive positive integers.
+      For example, if you want to flatten the dimension N and dimension N-1 together, L=(N).
+    
+    examples:
+      - inputs:
+        - name: E0
+          dtype: fp32
+          dims: [M, N, K]
+          data_gen: torch.rand
+        outputs:
+        - name: S0
+          dtype: fp32
+          dims: [M, N*K]
+          data_transform:
+            - |
+              input_data['E0'].view(-1, input_data['E0'].size(2))
+        impl: |
+          E1 = step.Flatten(L=[2,]).apply(E0)
+          return E1
+
+  - name: Partition and Merge
+    desc: |
+      Partition is a primitive that appends the elements of the data stream to the output list of streams based on the multi-hot value of the reference stream.
+      Merge is a primitive that collects elements from the input list of streams based on the multi-hot value of the reference stream, and reduces the elements using the init and apply functions.
+      Partition and Merge are only used in pairs.
+
+    examples:
+      - global: |
+          E_value = 2
+          ctx[E] = E_value
+          gelu = torch.nn.GELU()
+      
+        inputs:
+          - name: E0
+            dtype: Buffer(fp32, [K])
+            dims: [M]
+            data_gen: torch.randn
+          - name: E1
+            dtype: Multihot(fp32, E)
+            dims: [M]
+            min: 0
+            max: 2
+
+        parameters:
+          - name: W0
+            dtype: fp32
+            dims: [K, K]
+            data_gen: torch.randn
+          - name: W1
+            dtype: fp32
+            dims: [K, K]
+            data_gen: torch.randn
+
+        fns:
+          - name: Expert0
+            apply: |
+              return [gelu(input[0] @ input_data['W0'])]
+            input_dtype: Buffer(fp32, [K])
+            output_dtype: Buffer(fp32, [K])
+            func_name: fn_expert0
+          
+          - name: Expert1
+            apply: |
+              return [gelu(input[0] @ input_data['W1'])]
+            input_dtype: Buffer(fp32, [K])
+            output_dtype: Buffer(fp32, [K])
+            func_name: fn_expert1
+          
+          - name: Sum
+            apply: |
+              return [input[0] + state[0]]
+            init: [0]
+            input_dtype: Buffer(fp32, [K])
+            output_dtype: Buffer(fp32, [K])
+            func_name: fn_sum
+
+        outputs:
+          - name: S0
+            dtype: Buffer(fp32, [K])
+            dims: [M]
+            data_transform:
+              - |
+                index_tensor = input_data['E1'].movedim(-1, 0)
+                W = torch.stack([input_data['W0'], input_data['W1']])
+                hidden = torch.einsum('mk,ekh->emh', input_data['E0'], W)
+                hidden = gelu(hidden)
+                (index_tensor.unsqueeze(-1) * hidden).sum(dim=0)
+
+        impl: |
+          expert_fns = [fn_expert0, fn_expert1]
+          E1_0, E1_1 = step.Copy().apply(E1)
+          E2 = step.Partition(N=E_value).apply((E0, E1_0)) # 
+          E3 = [step.Map(fn=f).apply(e) for f, e in zip(expert_fns, E2)]
+          E4 = step.Merge(fn=fn_sum).apply((E3, E1_1))
+          return E4
+
+patterns:
+  - name: Dimension placeholder
+    desc: |
+      When the primitive requires the stream to have rank > 1, a Promote&Flatten pair can wrap the primitives to adjust the rank.
+      This pattern is useful for Accum and Bufferize primitives.
+    examples:
+      - inputs:
+        - name: E0
+          dtype: Buffer(fp32, [D])
+          dims: [N]
+          data_gen: torch.rand
+        fns:
+        - name: Sum
+          apply: |
+            return [state[0] + input[0]]
+          init: [0]
+          input_dtype: Buffer(fp32, [D])
+          output_dtype: Buffer(fp32, [D])
+          func_name: fn_sum
+        outputs:
+        - name: S0
+          dtype: fp32
+          dims: [D]
+          data_transform:
+            - |
+              torch.sum(input_data['E0'], 0, keepdim=False)
+        impl: |
+          E1 = step.Promote(b=1).apply(E0) # E1: {dtype: Buffer(fp32, [D]), dims: [N, 1]}
+          E2 = step.Accum(fn=fn_sum, b=1).apply(E1) # E2: {dtype: Buffer(fp32, [D]), dims: [1]}
+          E3 = step.Streamify().apply(E2) # E3: {dtype: fp32, dims: [D, 1]}
+          E4 = step.Flatten(L=[1,]).apply(E3) # E4: {dtype: fp32, dims: [D]}
+          return E4
+      - inputs:
+        - name: E0
+          dtype: fp32
+          dims: [M, N]
+          data_gen: torch.rand
+        fns:
+        - name: Square
+          apply: |
+            return [input[0] ** 2]
+          input_dtype: Buffer(fp32, [M, N])
+          output_dtype: Buffer(fp32, [M, N])
+          func_name: fn_square
+        outputs:
+        - name: S0
+          dtype: fp32
+          dims: [M, N]
+          data_transform:
+            - |
+              input_data['E0'] ** 2
+        impl: |
+          E1 = step.Promote(b=2).apply(E0) # E1: {dtype: fp32, dims: [M, N, 1]}
+          E2 = step.Bufferize(a=2).apply(E1) # E2: {dtype: Buffer(fp32, [M, N]), dims: [1]}
+          E3 = step.Map(fn=fn_square).apply(E2) # E3: {dtype: Buffer(fp32, [M, N]), dims: [1]}
+          E4 = step.Streamify().apply(E3) # E4: {dtype: fp32, dims: [M, N, 1]}
+          E5 = step.Flatten(L=[2,]).apply(E4) # E5: {dtype: fp32, dims: [M, N]}
+          return E5
+
+  - name: Stashing dimension
+    desc: |
+      When the pritmives require a non-one dimension to be inserted as a non-innermost dimension, a Bufferize&Streamify pair can wrap the primitives to adjust the dimension.
+      This pattern is useful for Repeat and RepeatRef primitives.
+    examples:
+      - inputs:
+        - name: E0
+          dtype: fp32
+          dims: [M, N, K]
+          data_gen: torch.rand
+        outputs:
+        - name: S0
+          dtype: fp32
+          dims: [M, N, D, K]
+          data_transform:
+            - |
+              input_data['E0'].unsqueeze(1).repeat(1, D_value, 1, 1)
+        impl: |
+          E1 = step.Bufferize(a=2).apply(E0) # E1: {dtype: Buffer(fp32, [M, N]), dims: [K]}
+          E2 = step.Repeat(n=D).apply(E1) # E2: {dtype: Buffer(fp32, [M, N]), dims: [D, K]}
+          E3 = step.Streamify().apply(E2) # E3: {dtype: fp32, dims: [M, N, D, K]}
+          return E3
