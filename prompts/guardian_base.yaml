@@ -1,0 +1,54 @@
+desc: |
+  Streaming Tensor Programs (STeP) provides a higher-level abstraction for dataflow systems.
+  The streams can be only consumed once. Your task is to use Copy primitives to create a new stream that is a copy of the input stream when necessary.
+
+examples:
+  - input_impl: |
+      E2 = step.Partition(N=E_value).apply((E0, E1))
+      E3 = [step.Map(fn=fn).apply(s) for fn, s in zip(matmul_fns, E2)]
+      E4 = step.Merge(fn=fn_sum).apply((E3, E1))
+      return E4
+    
+    output_impl: |
+      E1_0, E1_1 = step.Copy().apply(E1)
+      E2 = step.Partition(N=E_value).apply((E0, E1_0))
+      E3 = [step.Map(fn=fn).apply(s) for fn, s in zip(matmul_fns, E2)]
+      E4 = step.Merge(fn=fn_sum).apply((E3, E1_1))
+      return E4
+    
+    explanation: |
+      Stream E1 is consumed twice in the input implementation. To ensure that the stream is consumed only once, we create a copy of the stream E1 and use the copy in the second step.
+
+  - input_impl: |
+      E1 = step.Map(fn=fn_predict).apply(E0)
+      E2 = step.Map(fn=fn_router).apply(E1)
+      E3 = step.Map(fn=fn_affinity).apply(E0)
+      E4 = step.Zip().apply((E0, E3))
+      return E4
+
+    output_impl: |
+      E0_0, E0_1 = step.Copy().apply(E0)
+      E0_2, E0_3 = step.Copy().apply(E0_0)
+      E1 = step.Map(fn=fn_predict).apply(E0_1)
+      E2 = step.Map(fn=fn_router).apply(E1)
+      E3 = step.Map(fn=fn_affinity).apply(E0_2)
+      E4 = step.Zip().apply((E0_3, E3))
+      return E4
+    
+    explanation: |
+      Stream E0 is consumed 3 times in the input implementation. To ensure that all streams are consumed only once, we create a copy of the stream E0 and use the copy in the subsequent steps.
+  
+  - input_impl: |
+      E1 = step.Bufferize(a=1).apply(E0)
+      E2 = step.Map(fn=fn_gate).apply(E1)
+      E3 = step.Map(fn=fn_top2).apply(E2)
+      return E3, E2
+  
+    output_impl: |
+      E1 = step.Bufferize(a=1).apply(E0)
+      E2 = step.Map(fn=fn_gate).apply(E1)
+      E3 = step.Map(fn=fn_top2).apply(E2)
+      return E3, E2
+
+    explanation: |
+      All streams are consumed only once in the input implementation. No need to create a copy of any stream.

@@ -1,0 +1,34 @@
+test_name: bmm_02
+inputs:
+  - name: E0
+    dtype: fp32
+    dims: [K, N, M]
+    data_gen: torch.randn
+  - name: E1
+    dtype: fp32
+    dims: [K, D, M]
+    data_gen: torch.randn
+
+fns:
+  - name: Mul
+    apply: |
+      return [input[0] * input[1]]
+    input_dtype: [fp32, fp32]
+    output_dtype: fp32
+    func_name: fn_mul
+  
+  - name: Sum
+    apply: |
+      return [state[0] + input[0]]
+    init: [0]
+    input_dtype: fp32
+    output_dtype: fp32
+    func_name: fn_sum
+
+outputs:
+  - name: S0
+    dtype: fp32
+    dims: [D, N, M]
+    data_transform:
+      - |
+        torch.einsum('mnk,mdk->mnd', input_data['E0'], input_data['E1'])
