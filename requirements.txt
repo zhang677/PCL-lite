@@ -20,3 +20,8 @@ shutil
 copy
 requests
 openai
+sympy
+typing
+functools
+pathlib
+pydantic
