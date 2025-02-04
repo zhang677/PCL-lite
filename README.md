@@ -49,7 +49,7 @@ Validate the test and reference yamls under `/benchmark` and `/prompts`
 | Meta-Llama-3-1-405B-Instruct-Turbo | TogetherAI | TOGETHER_API_BASE, TOGETHER_API_KEY |
 | DeepSeek-V3 | DeepSeek-chat | DEEPSEEK_API_BASE, DEEPSEEK_API_KEY |
 | Qwen2-5-Coder-32B-Instruct | TogetherAI | TOGETHER_API_BASE, TOGETHER_API_KEY |
-3. Since STeP is still a research prototype, we only public the bmm tasks in the benchmark.
+3. Since STeP is still a research prototype, we only publish the bmm tasks in the benchmark.
 4. `NUM_SAMPLES` and `TEMPERATURE` can be adjusted.
 
 ## Cite
