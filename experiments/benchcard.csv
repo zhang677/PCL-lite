@@ -1,0 +1,4 @@
+Type,Task,Affine,Attribute,Fns
+bmm,bmm/bmm_0_test.yaml,0,C,2
+bmm,bmm/bmm_1_test.yaml,0,CS,2
+bmm,bmm/bmm_2_test.yaml,0,CS,2

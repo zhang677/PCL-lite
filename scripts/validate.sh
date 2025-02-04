@@ -1,6 +1,7 @@
 # 1. Export environment variables
 export STEPBASE=$PWD
 export PYTHONPATH="$STEPBASE:$PYTHONPATH"
+mkdir -p $STEPBASE/validation
 EXEC="python"
 
 # 2. Generate pytestable scripts from yaml files
