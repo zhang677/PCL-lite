@@ -1,7 +1,13 @@
 # PCL-lite
-An adaptive self-improvement LLM agentic system for ML library development. We choose [STeP](https://ppl.stanford.edu/papers/YARCH24_STEP.pdf) as the target ASPL for next-generation RDA.
+An adaptive self-improvement LLM agentic system for ML library development. We choose [STeP](https://ppl.stanford.edu/papers/YARCH24_STEP.pdf) as the target ASPL for next-generation RDA. Please run the following commands in order and under the `/PCL-lite` folder.
+
+(Optional)
+```
+pip install -r requirements.txt
+```
 
 ## Validation
+
 Validate the test and reference yamls under `/benchmark` and `/prompts`
 ```
 ./scripts/validate.sh
