@@ -28,9 +28,14 @@ Validate the test and reference yamls under `/benchmark` and `/prompts`
 ./experiments/agent/run.sh
 ```
 
-## Iterative experimnent
+## Self-improvement agent experimnent
 ```
 ./experiments/iterative/run.sh
+```
+
+## Single without structual IR experiment
+```
+./experiments/single-ws/run.sh
 ```
 
 ## Guide
