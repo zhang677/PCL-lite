@@ -1,5 +1,5 @@
 from reinforce.base import Storage
-from reinforce.agents import QueryImpl, QueryPlan, QueryValue, QueryPyBody, QueryAffineImpl, QueryAffineImplTwoStages, QueryAffinePyBody, prepare_prompt_query_impl, prepare_prompt_query_impl_with_feedback, prepare_prompt_eliminate_identity, prepare_prompt_query_py_body, prepare_prompt_query_affine_rewrite, prepare_prompt_affine_impl_stage_0
+from reinforce.agents import QueryImpl, QueryPyBody, QueryAffineImpl, QueryAffineImplTwoStages, QueryAffinePyBody, prepare_prompt_query_impl, prepare_prompt_query_impl_with_feedback, prepare_prompt_eliminate_identity, prepare_prompt_query_py_body, prepare_prompt_query_affine_rewrite, prepare_prompt_affine_impl_stage_0
 from tools import yaml_to_code
 import yaml
 import json
@@ -27,51 +27,6 @@ def query_impl_once(key: str, config_dict: dict, config: Storage, storage: Stora
     agent.log_yaml_list(storage.retrieve(key)["failure_rep"], "failure_impl_rep")
     agent.log_yaml_list(storage.retrieve(key)["success_rep"], "success_impl_rep")
 
-
-def query_plan_once(key: str, config_dict: dict, config: Storage, storage: Storage):
-    config.store(key, config_dict)
-    agent = QueryPlan(key, config)
-    with open(agent.config.retrieve(key)["task_path"], "r") as f:
-        task_str = f.read()
-        task_data = yaml.safe_load(task_str)
-        storage.store(key, {"task": task_data})
-    agent.run(storage)
-    agent.top_kd_plan(storage)
-    agent.log_yaml_list(storage.retrieve(key)["failure"], "failure_plan")
-    agent.log_yaml_list(storage.retrieve(key)["success"], "success_plan")
-    config.dump(os.path.join(agent.config.retrieve(key)["temp_dir"], "query_plan_config.yaml"))
-    agent.log_yaml_list(storage.retrieve(key)["subtasks"], "subtask") # Necessary for the next step
-    with open(os.path.join(agent.config.retrieve(key)["temp_dir"], "ids_dict.json"), "w") as f:
-        json.dump(storage.retrieve(key)["ids_dict"], f)
-
-def query_value_once(key: str, config_dict: dict, config: Storage, storage: Storage, ValueAgent=QueryValue):
-    config.store(key, config_dict)
-    agent = ValueAgent(key, config)
-    agent.run(storage)
-    config.dump(os.path.join(agent.config.retrieve(key)["temp_dir"], "config.yaml"))
-    # Store the prompt to the temp_dir
-    with open(os.path.join(agent.config.retrieve(key)["temp_dir"], "prompt.md"), "w") as f:
-        f.write(storage.retrieve(key)["prompt"])
-    # Store the feedback to the temp_dir
-    with open(os.path.join(agent.config.retrieve(key)["temp_dir"], "full_feedback.yaml"), "w") as f:
-        yaml.dump(storage.retrieve(key)["full_feedback"], f)
-    # Store the feedback to the temp_dir
-    with open(os.path.join(agent.config.retrieve(key)["temp_dir"], "feedback.yaml"), "w") as f:
-        yaml.dump(storage.retrieve(key)["feedback"], f)
-
-def query_subtask_impl_once(key: str, config_dict: dict, config: Storage, storage: Storage):
-    config.store(key, config_dict)
-    agent = QueryImpl(key, config)
-    prompt = prepare_prompt_query_impl(key, config, storage)
-    agent.run(storage)
-    agent.deduplicate_failure(storage)
-    config.dump(os.path.join(agent.config.retrieve(key)["temp_dir"], "query_impl_config.yaml"))
-    agent.log_yaml_list(storage.retrieve(key)["failure"], "failure_impl")
-    agent.log_yaml_list(storage.retrieve(key)["success"], "success_impl")
-    agent.log_yaml_list(storage.retrieve(key)["failure_rep"], "failure_impl_rep")
-    # Store the prompt to the temp_dir
-    with open(os.path.join(agent.config.retrieve(key)["temp_dir"], "prompt.md"), "w") as f:
-        f.write(prompt)
 
 def query_impl_with_feedback_once(key: str, config_dict: dict, config: Storage, storage: Storage):
     config.store(key, config_dict)
