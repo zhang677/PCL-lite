@@ -53,3 +53,15 @@ Validate the test and reference yamls under `/benchmark` and `/prompts`
 4. `NUM_SAMPLES` and `TEMPERATURE` can be adjusted.
 
 ## Cite
+
+If you find this work useful, please cite it:
+
+```bibtex
+@article{zhang2025adaptive,
+  title={Adaptive Self-improvement LLM Agentic System for ML Library Development},
+  author={Zhang, Genghan and Liang, Weixin and Hsu, Olivia and Olukotun, Kunle},
+  journal={arXiv preprint},
+  year={2025},
+  url={https://arxiv.org/abs/2502.02534},
+}
+```
