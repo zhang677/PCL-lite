@@ -1,0 +1,442 @@
+MaxSum:
+- name: MaxSum
+  apply: |
+    m_t, l_t, o_t = state # scalar, scalar, [D]
+    s_t, v_t = input # scalar, [D]
+    m_next = torch.max(m_t, s_t) # scalar
+    l_prim_t = torch.exp(m_t - m_next) * l_t
+    p_t = torch.exp(s_t - m_next)
+    l_next = p_t + l_prim_t
+    o_next = l_prim_t * o_t / l_next + p_t * v_t / l_next
+    return [m_next, l_next, o_next]
+  init: [-inf, 0, 0]
+  input_dtype: [fp32, 'Buffer(fp32, [D])']
+  output_dtype: [fp32, fp32, 'Buffer(fp32, [D])']
+  func_name: fn_maxsum
+GetThird:
+- name: GetThird
+  apply: |
+    return [input[2]]
+  input_dtype: [fp32, fp32, 'Buffer(fp32, [D])']
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_getthird
+ExpMaxDiff:
+- name: ExpMaxDiff
+  apply: |
+    m_t, e_t, d_t = state # scalar, scalar, scalar
+    s_t = input[0]
+    m_next = torch.max(m_t, s_t)
+    dm_next = m_t - m_next
+    e_next = torch.exp(s_t - m_next)
+    d_next = torch.exp(dm_next)
+    return [m_next, e_next, d_next]
+  init: [-inf, 0, 0]
+  input_dtype: fp32
+  output_dtype: [fp32, fp32, fp32]
+  func_name: fn_expmaxdiff
+DivSum:
+- name: DivSum
+  apply: |
+    v_t, e_t, d_t = input # [D], scalar, scalar
+    l_t, o_t = state # sclar, [D]
+    l_prim_t = d_t * l_t
+    l_next = e_t + l_prim_t
+    o_next = l_prim_t * o_t / l_next + e_t * v_t / l_next
+    return [l_next, o_next]
+  init: [0, 0]
+  input_dtype: ['Buffer(fp32, [D])', fp32, fp32]
+  output_dtype: ['Buffer(fp32, [D])', 'Buffer(fp32, [D])']
+  func_name: fn_divsum
+GetSecondThird:
+- name: GetSecondThird
+  apply: |
+    return [input[1], input[2]]
+  input_dtype: [fp32, fp32, fp32]
+  output_dtype: [fp32, fp32]
+  func_name: fn_getsecondthird
+GetSecond:
+- name: GetSecond
+  apply: |
+    return [input[1]]
+  input_dtype: ['Buffer(fp32, [D])', 'Buffer(fp32, [D])']
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_getsecond
+WeightedSumSingle:
+- name: WeightedSumSingle
+  apply: |
+    e_t, d_t = input
+    r_t = state[0]
+    return [r_t * d_t + e_t]
+  init: [0]
+  input_dtype: [fp32, fp32]
+  output_dtype: fp32
+  func_name: fn_wssingle
+WeightedSumDouble:
+- name: WeightedSumDouble
+  apply: |
+    v_t, e_t, d_t = input
+    return [state[0] * d_t + e_t * v_t]
+  init: [0]
+  input_dtype: ['Buffer(fp32, [D])', fp32, fp32]
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_wsdouble
+Div:
+- name: Div
+  apply: |
+    r_t, l_t = input
+    return [l_t / r_t.unsqueeze(-1)]
+  input_dtype: [fp32, 'Buffer(fp32, [D])']
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_div
+- name: Div
+  apply: |
+    return [input[0] / input[1]]
+  input_dtype: ['Buffer(fp32, [D])', 'Buffer(fp32, [D])']
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_div
+- name: Div
+  apply: |
+    return [input[0] / input[1]]
+  input_dtype: [fp32, fp32]
+  output_dtype: fp32
+  func_name: fn_div
+Mul:
+- name: Mul
+  apply: |
+    return [input[0] * input[1]]
+  input_dtype: [fp32, fp32]
+  output_dtype: fp32
+  func_name: fn_mul
+- name: Mul
+  apply: |
+    return [input[0] * input[1]]
+  input_dtype: ['Buffer(fp32, [N, M])', 'Buffer(fp32, [N, M])']
+  output_dtype: Buffer(fp32, [N, M])
+  func_name: fn_mul
+- name: Mul
+  apply: |
+    return [input[0] * input[1]]
+  input_dtype: [fp32, 'Buffer(fp32, [D])']
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_mul
+Add:
+- name: Add
+  apply: |
+    return [state[0] + input[0]]
+  init: [0]
+  input_dtype: Buffer(fp32, [N, M])
+  output_dtype: Buffer(fp32, [N, M])
+  func_name: fn_add
+- name: Add
+  apply: |
+    return [state[0] + input[0]]
+  init: [0]
+  input_dtype: fp32
+  output_dtype: fp32
+  func_name: fn_add
+OuterProduct:
+- name: OuterProduct
+  apply: |
+    return [torch.einsum('i,j->ij', input[0], input[1])]
+  input_dtype: ['Buffer(fp32, [N])', 'Buffer(fp32, [D])']
+  output_dtype: Buffer(fp32, [D, N])
+  func_name: fn_outer_product
+Sum:
+- name: Sum
+  apply: |
+    return [state[0] + input[0]]
+  init: [0]
+  input_dtype: Buffer(fp32, [D, N])
+  output_dtype: Buffer(fp32, [D, N])
+  func_name: fn_sum
+- name: Sum
+  apply: |
+    return [state[0] + input[0]]
+  init: [0]
+  input_dtype: Buffer(fp32, [D])
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_sum
+- name: Sum
+  apply: |
+    return [state[0] + input[0]]
+  init: [0]
+  input_dtype: fp32
+  output_dtype: fp32
+  func_name: fn_sum
+- name: Sum
+  apply: |
+    return [input[0] + state[0]]
+  init: [-1]
+  input_dtype: fp32
+  output_dtype: fp32
+  func_name: fn_sum
+- name: Sum
+  apply: |
+    return [input[0] + state[0]]
+  init: [0]
+  input_dtype: Buffer(fp32, [K])
+  output_dtype: Buffer(fp32, [K])
+  func_name: fn_sum
+- name: Sum
+  apply: |
+    return [state[0] + input[0]]
+  init: [0]
+  input_dtype: Buffer(fp32, [K])
+  output_dtype: Buffer(fp32, [K])
+  func_name: fn_sum
+Mean:
+- name: Mean
+  apply: |
+    return [input[0].mean(dim=-1, keepdim=True).expand(D_value)]
+  input_dtype: Buffer(fp32, [D])
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_mean
+Minus:
+- name: Minus
+  apply: |
+    return [input[0] - input[1]]
+  input_dtype: ['Buffer(fp32, [D])', 'Buffer(fp32, [D])']
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_minus
+- name: Minus
+  apply: |
+    return [input[0] - input[1]]
+  input_dtype: [fp32, fp32]
+  output_dtype: fp32
+  func_name: fn_minus
+Square:
+- name: Square
+  apply: |
+    return [input[0] * input[0]]
+  input_dtype: Buffer(fp32, [D])
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_square
+- name: Square
+  apply: |
+    return [input[0] * input[0]]
+  input_dtype: fp32
+  output_dtype: fp32
+  func_name: fn_square
+AddEps:
+- name: AddEps
+  apply: |
+    return [input[0] + 1e-5]
+  input_dtype: Buffer(fp32, [D])
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_addeps
+- name: AddEps
+  apply: |
+    return [input[0] + 1e-5]
+  input_dtype: fp32
+  output_dtype: fp32
+  func_name: fn_addeps
+Sqrt:
+- name: Sqrt
+  apply: |
+    return [torch.sqrt(input[0])]
+  input_dtype: Buffer(fp32, [D])
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_sqrt
+- name: Sqrt
+  apply: |
+    return [torch.sqrt(input[0])]
+  input_dtype: fp32
+  output_dtype: fp32
+  func_name: fn_sqrt
+DivByD:
+- name: DivByD
+  apply: |
+    return [input[0] / D_value]
+  input_dtype: fp32
+  output_dtype: fp32
+  func_name: fn_divbyD
+NeoXRoPE:
+- name: NeoXRoPE
+  apply: |
+    freq = input[0] / (10000**(torch.arange(0, D_value, 2, dtype=torch.float) / ctx[D]))
+    cos = freq.cos()
+    sin = freq.sin()
+    x1, x2 = input[1].chunk(2, dim=-1)
+    o1 = x1 * cos - x2 * sin
+    o2 = x1 * sin + x2 * cos
+    return [torch.cat([o1, o2], dim=-1)]
+  input_dtype: [fp32, 'Buffer(fp32, [D])']
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_neoxrope
+GptJRoPE:
+- name: GptJRoPE
+  apply: |
+    freq = input[0] / (10000**(torch.arange(0, D_value, 2, dtype=torch.float) / ctx[D]))
+    cos = freq.cos()
+    sin = freq.sin()
+    x1 = input[1][..., ::2]
+    x2 = input[1][..., 1::2]
+    o1 = x1 * cos - x2 * sin
+    o2 = x1 * sin + x2 * cos
+    return [torch.stack((o1, o2), dim=-1).flatten(-2)]
+  input_dtype: [fp32, 'Buffer(fp32, [D])']
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_gptjrope
+Gate:
+- name: Gate
+  apply: |
+    return [softmax(input[0] @ input_data['Wg'])]
+  input_dtype: Buffer(fp32, [K])
+  output_dtype: Buffer(fp32, [E])
+  func_name: fn_gate
+- name: Gate
+  apply: |
+    return [sigmoid(input[0] @ input_data['Wg'])]
+  input_dtype: Buffer(fp32, [K])
+  output_dtype: fp32
+  func_name: fn_gate
+Top1:
+- name: Top1
+  apply: |
+    _, indices = torch.topk(input[0], 1, dim=-1)
+    multihot = torch.zeros_like(input[0], dtype=torch.float32)
+    multihot.scatter_(-1, indices, 1.0)
+    return [multihot]
+  input_dtype: Buffer(fp32, [E])
+  output_dtype: Multihot(fp32, E)
+  func_name: fn_top1
+Transpose:
+- name: Transpose
+  apply: |
+    return [input[0].T]
+  input_dtype: Buffer(fp32, [E, M])
+  output_dtype: Buffer(fp32, [M, E])
+  func_name: fn_transpose_0
+- name: Transpose
+  apply: |
+    return [input[0].T]
+  input_dtype: Buffer(Multihot(fp32, M), [E])
+  output_dtype: Buffer(Multihot(fp32, E), [M])
+  func_name: fn_transpose_1
+Top3:
+- name: Top3
+  apply: |
+    _, indices = torch.topk(input[0], 3, dim=0)
+    multihot = torch.zeros_like(input[0], dtype=torch.float32)
+    multihot.scatter_(0, indices, 1.0)
+    return [multihot]
+  input_dtype: Buffer(fp32, [M])
+  output_dtype: Multihot(fp32, M)
+  func_name: fn_top3
+- name: Top3
+  apply: |
+    _, indices = torch.topk(input[0], 3, dim=0)
+    multihot = torch.zeros_like(input[0], dtype=torch.float32)
+    multihot.scatter_(0, indices, 1.0)
+    return [multihot]
+  input_dtype: Buffer(fp32, [M])
+  output_dtype: Buffer(fp32, [M])
+  func_name: fn_top3
+Score:
+- name: Score
+  apply: |
+    return [sigmoid((silu(input[0] @ input_data['Wa_0'])) @ input_data['Wa_1'])]
+  input_dtype: Buffer(fp32, [D])
+  output_dtype: fp32
+  func_name: fn_score
+Filter:
+- name: Filter
+  apply: |
+    return [torch.tensor([1.0, 0.0])] if (input[0] > 0.5) else [torch.tensor([0.0, 1.0])]
+  input_dtype: fp32
+  output_dtype: Multihot(fp32, E)
+  func_name: fn_filter
+- name: Filter
+  apply: |
+    return [torch.tensor([1.0, 0.0])] if (input[0] == 1.0) else [torch.tensor([0.0, 1.0])]
+  input_dtype: fp32
+  output_dtype: Multihot(fp32, E)
+  func_name: fn_filter
+Expert0:
+- name: Expert0
+  apply: |
+    return [input[1] * gelu(input[0] @ input_data['W']) + input[0]]
+  input_dtype: ['Buffer(fp32, [D])', fp32]
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_expert0
+- name: Expert0
+  apply: |
+    return [gelu(input[0] @ input_data['W0_0']) @ input_data['W0_1'], input[1][0]]
+  input_dtype: ['Buffer(fp32, [K])', 'Buffer(fp32, [E])']
+  output_dtype: ['Buffer(fp32, [K])', fp32]
+  func_name: fn_expert0
+- name: Expert0
+  apply: |
+    return [gelu(input[0] @ input_data['W']) * input[1] + input[0]]
+  input_dtype: ['Buffer(fp32, [K])', fp32]
+  output_dtype: Buffer(fp32, [K])
+  func_name: fn_expert0
+- name: Expert0
+  apply: |
+    return [gelu(input[0] @ input_data['W0_0']) @ input_data['W0_1'] * input[1][0]]
+  input_dtype: ['Buffer(fp32, [K])', 'Buffer(fp32, [E])']
+  output_dtype: Buffer(fp32, [K])
+  func_name: fn_expert0
+Expert1:
+- name: Expert1
+  apply: |
+    return [input[0]]
+  input_dtype: ['Buffer(fp32, [D])', fp32]
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_expert1
+- name: Expert1
+  apply: |
+    return [gelu(input[0] @ input_data['W1_0']) @ input_data['W1_1'], input[1][1]]
+  input_dtype: ['Buffer(fp32, [K])', 'Buffer(fp32, [E])']
+  output_dtype: ['Buffer(fp32, [K])', fp32]
+  func_name: fn_expert1
+- name: Expert1
+  apply: |
+    return [input[0]]
+  input_dtype: ['Buffer(fp32, [K])', fp32]
+  output_dtype: Buffer(fp32, [K])
+  func_name: fn_expert1
+- name: Expert1
+  apply: |
+    return [gelu(input[0] @ input_data['W1_0']) @ input_data['W1_1'] * input[1][1]]
+  input_dtype: ['Buffer(fp32, [K])', 'Buffer(fp32, [E])']
+  output_dtype: Buffer(fp32, [K])
+  func_name: fn_expert1
+Affinity:
+- name: Affinity
+  apply: |
+    return [sigmoid(input[0] @ input_data['Wg'])]
+  input_dtype: Buffer(fp32, [D])
+  output_dtype: fp32
+  func_name: fn_affinity
+WeightedSum:
+- name: WeightedSum
+  apply: |
+    return [state[0] + input[0] * input[1]]
+  init: [0]
+  input_dtype: ['Buffer(fp32, [K])', fp32]
+  output_dtype: Buffer(fp32, [K])
+  func_name: fn_weighted_sum
+Expert2:
+- name: Expert2
+  apply: |
+    return [gelu(input[0] @ input_data['W2_0']) @ input_data['W2_1'], input[1][2]]
+  input_dtype: ['Buffer(fp32, [K])', 'Buffer(fp32, [E])']
+  output_dtype: ['Buffer(fp32, [K])', fp32]
+  func_name: fn_expert2
+- name: Expert2
+  apply: |
+    return [gelu(input[0] @ input_data['W2_0']) @ input_data['W2_1'] * input[1][2]]
+  input_dtype: ['Buffer(fp32, [K])', 'Buffer(fp32, [E])']
+  output_dtype: Buffer(fp32, [K])
+  func_name: fn_expert2
+Top2:
+- name: Top2
+  apply: |
+    _, indices = torch.topk(input[0], 2, dim=-1)
+    multihot = torch.zeros_like(input[0], dtype=torch.float32)
+    multihot.scatter_(-1, indices, 1.0)
+    return [multihot]
+  input_dtype: Buffer(fp32, [E])
+  output_dtype: Multihot(fp32, E)
+  func_name: fn_top2
