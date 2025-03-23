@@ -28,7 +28,7 @@ Validate the test and reference yamls under `/benchmark` and `/prompts`
 ./experiments/agent/run.sh
 ```
 
-## Self-improvement agent experiment
+## Self-improvement agent experimnent
 ```
 ./experiments/iterative/run.sh
 ```
