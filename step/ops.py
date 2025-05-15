@@ -5,6 +5,7 @@ from sympy import symbols
 from functools import reduce
 import torch
 
+
 class OpBase:
     def __init__(self, name, **kwargs):
         self.name = name
@@ -196,6 +197,7 @@ class Accum(OpBase):
         )
         if input.data is not None:
             result.ctx = input.ctx
+            # TODO: Construct a general application function here
             output_indices = get_full_indices(base.subsOuterShape(result.shape, result.ctx))
             input_indices = get_full_indices(base.subsOuterShape(input.shape[:b], input.ctx))
             if isinstance(result.dtype, base.Element) or isinstance(result.dtype, base.Buffer):
@@ -205,41 +207,14 @@ class Accum(OpBase):
             else:
                 raise ValueError("Invalid dtype")
             result.data = [torch.zeros(shape) for shape in output_shapes]
-            # Create a functionally pure implementation
             for idx in output_indices:
-                # Process all indices for this output location
-                accumulated_results = []
-                for n in range(len(result.data)):
-                    # Create a fresh tensor for each output dimension
-                    accumulator = torch.zeros_like(result.data[n])
-                    accumulated_results.append(accumulator)
-                
                 state = fn.getInit()
                 for i in input_indices:
                     full_idx = idx + i
                     partial_data = [d[full_idx + (...,)] for d in input.data]
                     state = fn.apply(state, partial_data)
-                    
-                # Use functional mask-based update for each state component
                 for n, s in enumerate(state):
-                    # Instead of using direct indexing, create a mask
-                    # and use torch.where for out-of-place update
-                    mask = torch.zeros_like(accumulated_results[n], dtype=torch.bool)
-                    
-                    # Set up slice indexing for the specific dimension
-                    idx_tuple = [slice(None)] * mask.ndim
-                    for dim, idx_val in enumerate(idx):
-                        idx_tuple[dim] = idx_val
-                    
-                    # Set the mask at the appropriate location
-                    mask[tuple(idx_tuple)] = True
-                    
-                    # Use where to create a new tensor with the update
-                    accumulated_results[n] = torch.where(mask, s.clone(), accumulated_results[n])
-                
-                # Update the result data with our accumulated values
-                for n in range(len(result.data)):
-                    result.data[n] = accumulated_results[n]
+                    result.data[n][idx] = s
         return result
 
 class Streamify(OpBase):
@@ -379,6 +354,7 @@ class Scan(OpBase):
 
         if input.data is not None:
             result.ctx = input.ctx
+            # 1. Check the prefix shape
             output_indices = get_full_indices(base.subsOuterShape(input.shape[b:], result.ctx))
             input_indices = get_full_indices(base.subsOuterShape(input.shape[:b], input.ctx))
             if isinstance(result.dtype, base.Element) or isinstance(result.dtype, base.Buffer):
@@ -388,41 +364,14 @@ class Scan(OpBase):
             else:
                 raise ValueError("Invalid dtype")
             result.data = [torch.zeros(shape) for shape in output_shapes]
-            # Create a functionally pure implementation
             for idx in output_indices:
-                # Process all indices for this output location
-                accumulated_results = []
-                for n in range(len(result.data)):
-                    # Create a fresh tensor for each output dimension
-                    accumulator = torch.zeros_like(result.data[n])
-                    accumulated_results.append(accumulator)
-                
                 state = fn.getInit()
                 for i in input_indices:
                     full_idx = idx + i
                     partial_data = [d[full_idx + (...,)] for d in input.data]
                     state = fn.apply(state, partial_data)
-                    
-                    # Use functional mask-based update for each state component
                     for n, s in enumerate(state):
-                        # Instead of using direct indexing, create a mask
-                        # and use torch.where for out-of-place update
-                        mask = torch.zeros_like(accumulated_results[n], dtype=torch.bool)
-                        
-                        # Set up slice indexing for the specific dimension
-                        idx_tuple = [slice(None)] * mask.ndim
-                        for dim, idx_val in enumerate(full_idx):
-                            idx_tuple[dim] = idx_val
-                        
-                        # Set the mask at the appropriate location
-                        mask[tuple(idx_tuple)] = True
-                        
-                        # Use where to create a new tensor with the update
-                        accumulated_results[n] = torch.where(mask, s.clone(), accumulated_results[n])
-                
-                # Update the result data with our accumulated values
-                for n in range(len(result.data)):
-                    result.data[n] = accumulated_results[n]
+                        result.data[n][full_idx] = s
         return result
 
 class Merge(OpBase):
