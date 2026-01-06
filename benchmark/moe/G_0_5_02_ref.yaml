@@ -1,0 +1,75 @@
+test_name: G_0_5_02
+global: |
+  E_value = 2
+  ctx[E] = E_value
+  gelu = torch.nn.GELU()
+
+inputs:
+  - name: E0
+    dtype: Buffer(fp32, [K])
+    dims: [M]
+    data_gen: torch.randn
+  - name: E1
+    dtype: fp32
+    dims: [M]
+    data_gen: binary
+  - name: E2
+    dtype: fp32
+    dims: [M]
+    data_gen: torch.randn
+
+parameters:
+  - name: W
+    dtype: fp32
+    dims: [K, K]
+    data_gen: torch.randn
+  
+fns:
+  - name: Expert0
+    apply: |
+      return [gelu(input[0] @ input_data['W']) * input[1] + input[0]]
+    input_dtype: ["Buffer(fp32, [K])", fp32]
+    output_dtype: Buffer(fp32, [K])
+    func_name: fn_expert0
+  
+  - name: Expert1
+    apply: |
+      return [input[0]]
+    input_dtype: ["Buffer(fp32, [K])", fp32]
+    output_dtype: Buffer(fp32, [K])
+    func_name: fn_expert1
+  
+  - name: Sum
+    apply: |
+      return [input[0] + state[0]]
+    init: [0]
+    input_dtype: Buffer(fp32, [K])
+    output_dtype: Buffer(fp32, [K])
+    func_name: fn_sum
+
+  - name: Filter
+    apply: |
+      return [torch.tensor([1.0, 0.0])] if (input[0] == 1.0) else [torch.tensor([0.0, 1.0])]
+    input_dtype: fp32
+    output_dtype: Multihot(fp32, E)
+    func_name: fn_filter
+  
+outputs:
+  - name: S0
+    dtype: Buffer(fp32, [K])
+    dims: [M]
+    data_transform:
+      - |
+        E0_data = input_data['E0']
+        score = input_data['E1'].unsqueeze(-1) 
+        affinity = input_data['E2'].unsqueeze(-1)
+        (affinity * (gelu(E0_data @ input_data['W'])) + E0_data) * score + E0_data * (1 - score)
+
+impl: |
+  expert_fns = [fn_expert0, fn_expert1]
+  E3 = step.Map(fn=fn_filter).apply(E1)
+  E4 = step.Zip().apply((E0, E2))
+  E5 = step.Partition(N=E_value).apply((E4, E3))
+  E6 = [step.Map(fn=f).apply(e) for f, e in zip(expert_fns, E5)]
+  E7 = step.Merge(fn=fn_sum).apply((E6, E3))
+  return E7

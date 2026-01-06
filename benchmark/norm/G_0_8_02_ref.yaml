@@ -1,0 +1,80 @@
+test_name: G_0_8_02
+inputs:
+  - name: E0
+    dtype: fp32
+    dims: [D, N, M, 1]
+    data_gen: torch.rand
+
+fns:
+  - name: Square
+    apply: |
+      return [input[0] * input[0]]
+    input_dtype: fp32
+    output_dtype: fp32
+    func_name: fn_square
+  - name: AccumAdd
+    apply: |
+      return [state[0] + input[0]]
+    init: [0]
+    input_dtype: fp32
+    output_dtype: fp32
+    func_name: fn_accumadd
+  - name: DivByD
+    apply: |
+      return [input[0] / D_value]
+    input_dtype: fp32
+    output_dtype: fp32
+    func_name: fn_divbyD
+  - name: Sqrt
+    apply: |
+      return [torch.sqrt(input[0])]
+    input_dtype: fp32
+    output_dtype: fp32
+    func_name: fn_sqrt
+  - name: AddEps
+    apply: |
+      return [input[0] + 1e-5]
+    input_dtype: fp32
+    output_dtype: fp32
+    func_name: fn_addeps
+  - name: Div
+    apply: |
+      return [input[0] / input[1]]
+    input_dtype: [fp32, fp32]
+    output_dtype: fp32
+    func_name: fn_div
+  - name: Mul
+    apply: |
+      return [input[0] * input[1]]
+    input_dtype: [fp32, fp32]
+    output_dtype: fp32
+    func_name: fn_mul
+  - name: Sub
+    apply: |
+      return [input[0] - input[1]]
+    input_dtype: [fp32, fp32]
+    output_dtype: fp32
+    func_name: fn_sub
+
+outputs:
+  - name: S0
+    dtype: fp32
+    dims: [D, N, M, 1]
+    data_transform:
+      - |-
+        T0 = torch.ops.aten.native_layer_norm.default(input_data['E0'], [D_value], None, None, 1e-5)[0]
+impl: |-
+  E1 = step.Accum(fn=fn_accumadd, b=1).apply(E0)
+  E2 = step.Map(fn=fn_divbyD).apply(E1)
+  E4 = step.Repeat(n=D).apply(E2)
+  E5 = step.Zip().apply((E0, E4))
+  E6 = step.Map(fn=fn_sub).apply(E5)
+  E7 = step.Map(fn=fn_square).apply(E6)
+  E8 = step.Accum(fn=fn_accumadd, b=1).apply(E7)
+  E9 = step.Map(fn=fn_divbyD).apply(E8)
+  E10 = step.Map(fn=fn_addeps).apply(E9)
+  E11 = step.Map(fn=fn_sqrt).apply(E10)
+  E13 = step.Repeat(n=D).apply(E11)
+  E14 = step.Zip().apply((E6, E13))
+  E15 = step.Map(fn=fn_div).apply(E14)
+  return E15

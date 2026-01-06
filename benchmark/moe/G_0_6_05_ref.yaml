@@ -1,0 +1,101 @@
+test_name: G_0_6_05
+global: |
+  E_value = 3
+  ctx[E] = E_value
+  gelu = torch.nn.GELU()
+
+inputs:
+  - name: E0
+    dtype: Buffer(fp32, [K])
+    dims: [N, M]
+    data_gen: torch.randn
+  - name: E1
+    dtype: Multihot(fp32, E)
+    dims: [N, M]
+    min: 0
+    max: 3
+  - name: E2
+    dtype: Buffer(fp32, [E])
+    dims: [N, M]
+    data_gen: torch.randn
+
+parameters:
+  - name: W0_0
+    dtype: fp32
+    dims: [D, K]
+    data_gen: torch.randn
+  - name: W0_1
+    dtype: fp32
+    dims: [K, D]
+    data_gen: torch.randn
+  - name: W1_0
+    dtype: fp32
+    dims: [D, K]
+    data_gen: torch.randn
+  - name: W1_1
+    dtype: fp32
+    dims: [K, D]
+    data_gen: torch.randn
+  - name: W2_0
+    dtype: fp32
+    dims: [D, K]
+    data_gen: torch.randn
+  - name: W2_1
+    dtype: fp32
+    dims: [K, D]
+    data_gen: torch.randn
+
+fns:
+  - name: WeightedSum
+    apply: |
+      return [state[0] + input[0] * input[1]]
+    init: [0]
+    input_dtype: ["Buffer(fp32, [K])", fp32]
+    output_dtype: Buffer(fp32, [K])
+    func_name: fn_weighted_sum
+  
+  - name: Expert0
+    apply: |
+      return [gelu(input[0] @ input_data['W0_0']) @ input_data['W0_1'], input[1][0]]
+    input_dtype: ["Buffer(fp32, [K])", "Buffer(fp32, [E])"]
+    output_dtype: ["Buffer(fp32, [K])", fp32]
+    func_name: fn_expert0
+  
+  - name: Expert1
+    apply: |
+      return [gelu(input[0] @ input_data['W1_0']) @ input_data['W1_1'], input[1][1]]
+    input_dtype: ["Buffer(fp32, [K])", "Buffer(fp32, [E])"]
+    output_dtype: ["Buffer(fp32, [K])", fp32]
+    func_name: fn_expert1
+  
+  - name: Expert2
+    apply: |
+      return [gelu(input[0] @ input_data['W2_0']) @ input_data['W2_1'], input[1][2]]
+    input_dtype: ["Buffer(fp32, [K])", "Buffer(fp32, [E])"]
+    output_dtype: ["Buffer(fp32, [K])", fp32]
+    func_name: fn_expert2
+
+outputs:
+  - name: S0
+    dtype: Buffer(fp32, [K])
+    dims: [N, M]
+    data_transform:
+      - |
+        index_tensor = input_data['E1'].movedim(-1, 0)
+        E0 = input_data['E0']
+        E2 = input_data['E2']
+        W0 = torch.stack([input_data[f'W{i}_0'] for i in range(E_value)])
+        W1 = torch.stack([input_data[f'W{i}_1'] for i in range(E_value)])
+        hidden = torch.einsum('mnk,ekh->emnh', E0, W0)
+        hidden = gelu(hidden)
+        transformed = torch.einsum('emnh,ehk->emnk', hidden, W1)
+        weighted = transformed * E2.movedim(-1, 0).unsqueeze(-1)
+        (index_tensor.unsqueeze(-1) * weighted).sum(dim=0)
+
+impl: |
+  expert_fns = [fn_expert0, fn_expert1, fn_expert2]
+  E3 = step.Zip().apply((E0, E2))
+  E4 = step.Partition(N=E_value).apply((E3, E1))
+  E5 = [step.Map(fn=f).apply(e) for f, e in zip(expert_fns, E4)]
+  E6 = step.Merge(fn=fn_weighted_sum).apply((E5, E1))
+  return E6

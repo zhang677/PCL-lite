@@ -1,0 +1,41 @@
+test_name: G_0_4_01
+inputs:
+  - name: E0
+    dtype: fp32
+    dims: [M, N]
+    data_gen: torch.rand
+  - name: E1
+    dtype: Buffer(fp32, [D])
+    dims: [M, N]
+    data_gen: torch.rand
+  
+fns:
+  - name: MaxSum
+    apply: |
+      m_t, l_t, o_t = state # scalar, scalar, [D]
+      s_t, v_t = input # scalar, [D]
+      m_next = torch.max(m_t, s_t) # scalar
+      l_prim_t = torch.exp(m_t - m_next) * l_t
+      p_t = torch.exp(s_t - m_next)
+      l_next = p_t + l_prim_t
+      o_next = l_prim_t * o_t / l_next + p_t * v_t / l_next
+      return [m_next, l_next, o_next]
+    init: [-inf, 0, 0]
+    input_dtype: [fp32, "Buffer(fp32, [D])"]
+    output_dtype: [fp32, fp32, "Buffer(fp32, [D])"]
+    func_name: fn_maxsum
+
+  - name: GetThird
+    apply: |
+      return [input[2]]
+    input_dtype: [fp32, fp32, "Buffer(fp32, [D])"]
+    output_dtype: Buffer(fp32, [D])
+    func_name: fn_getthird
+
+outputs:
+  - name: S0
+    dtype: fp32
+    dims: [D, N]
+    data_transform:
+      - |
+        torch.bmm(torch.softmax(input_data['E0'], 1).unsqueeze(1), input_data['E1']).squeeze(1)

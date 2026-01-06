@@ -1,0 +1,81 @@
+test_name: G_0_10
+global: |
+  E_value = 2
+  ctx[E] = E_value
+  sigmoid = torch.nn.Sigmoid()
+  silu = torch.nn.SiLU()
+  gelu = torch.nn.GELU()
+
+inputs:
+  - name: E0
+    dtype: fp32
+    dims: [D, N, M]
+    data_gen: torch.randn
+
+parameters:
+  - name: Wa_0
+    dtype: fp32
+    dims: [K, D]
+    data_gen: torch.randn
+  - name: Wa_1
+    dtype: fp32
+    dims: [K]
+    data_gen: torch.randn
+  - name: W
+    dtype: fp32
+    dims: [D, D]
+    data_gen: torch.randn
+  - name: Wg
+    dtype: fp32
+    dims: [D]
+    data_gen: torch.randn
+
+fns:
+  - name: Score
+    apply: |
+      return [sigmoid((silu(input[0] @ input_data['Wa_0'])) @ input_data['Wa_1'])]
+    input_dtype: Buffer(fp32, [D])
+    output_dtype: fp32
+    func_name: fn_score
+  - name: Filter
+    apply: |
+      return [torch.tensor([1.0, 0.0])] if (input[0] > 0.5) else [torch.tensor([0.0, 1.0])]
+    input_dtype: fp32
+    output_dtype: Multihot(fp32, E)
+    func_name: fn_filter
+  - name: Expert0
+    apply: |
+      return [input[1] * gelu(input[0] @ input_data['W']) + input[0]]
+    input_dtype: ["Buffer(fp32, [D])", fp32]
+    output_dtype: Buffer(fp32, [D])
+    func_name: fn_expert0
+  - name: Expert1
+    apply: |
+      return [input[0]]
+    input_dtype: ["Buffer(fp32, [D])", fp32]
+    output_dtype: Buffer(fp32, [D])
+    func_name: fn_expert1
+  - name: Affinity
+    apply: |
+      return [sigmoid(input[0] @ input_data['Wg'])]
+    input_dtype: Buffer(fp32, [D])
+    output_dtype: fp32
+    func_name: fn_affinity
+  - name: Sum
+    apply: |
+      return [state[0] + input[0]]
+    init: [0]
+    input_dtype: Buffer(fp32, [D])
+    output_dtype: Buffer(fp32, [D])
+    func_name: fn_sum
+
+outputs:
+  - name: S0
+    dtype: Buffer(fp32, [D])
+    dims: [N, M]
+    data_transform:
+      - |
+        E0_data = input_data['E0']
+        score = (sigmoid(silu(E0_data @ input_data['Wa_0']) @ input_data['Wa_1']) > 0.5).float().unsqueeze(-1)
+        affinity = sigmoid(E0_data @ input_data['Wg']).unsqueeze(-1)
+        (affinity * (gelu(E0_data @ input_data['W'])) + E0_data) * score + E0_data * (1 - score)

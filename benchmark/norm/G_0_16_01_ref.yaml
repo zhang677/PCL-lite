@@ -1,0 +1,79 @@
+test_name: G_0_16_01
+inputs:
+- name: E0
+  dtype: fp32
+  dims: [D, N]
+  data_gen: torch.rand
+
+fns:
+- name: Add
+  apply: |
+    return [state[0] + input[0]]
+  init: [0]
+  input_dtype: fp32
+  output_dtype: fp32
+  func_name: fn_add
+- name: Square
+  apply: |
+    return [input[0] * input[0]]
+  input_dtype: fp32
+  output_dtype: fp32
+  func_name: fn_square
+- name: DivByD
+  apply: |
+    return [input[0] / D_value]
+  input_dtype: fp32
+  output_dtype: fp32
+  func_name: fn_divbyD
+- name: Minus
+  apply: |
+    return [input[0] - input[1]]
+  input_dtype: [fp32, fp32]
+  output_dtype: fp32
+  func_name: fn_minus
+- name: AddEps
+  apply: |
+    return [input[0] + 1e-5]
+  input_dtype: fp32
+  output_dtype: fp32
+  func_name: fn_addeps
+- name: Sqrt
+  apply: |
+    return [torch.sqrt(input[0])]
+  input_dtype: fp32
+  output_dtype: fp32
+  func_name: fn_sqrt
+- name: Div
+  apply: |
+    return [input[0] / input[1]]
+  input_dtype: [fp32, fp32]
+  output_dtype: fp32
+  func_name: fn_div
+
+outputs:
+- name: S0
+  dtype: fp32
+  dims: [D, N]
+  data_transform:
+  - |-
+    (input_data['E0'] - input_data['E0'].mean(dim=1, keepdim=True)) / torch.sqrt(input_data['E0'].var(dim=1, keepdim=True, unbiased=False) + 1e-5)
+
+impl: |-
+  E1 = step.Accum(fn=fn_add, b=1).apply(E0)
+  E2 = step.Map(fn=fn_square).apply(E0) 
+  E3 = step.Accum(fn=fn_add, b=1).apply(E2) 
+  E4 = step.Map(fn=fn_divbyD).apply(E3) 
+  E5 = step.Map(fn=fn_divbyD).apply(E1) 
+  E6 = step.Map(fn=fn_square).apply(E5) 
+  E7 = step.Zip().apply((E4, E6)) 
+  E8 = step.Map(fn=fn_minus).apply(E7) 
+  E9 = step.Map(fn=fn_addeps).apply(E8) 
+  E10 = step.Map(fn=fn_sqrt).apply(E9) 
+  E11 = step.Repeat(n=D).apply(E5) 
+  E12 = step.Repeat(n=D).apply(E10) 
+  E13 = step.Zip().apply((E0, E11))
+  E14 = step.Map(fn=fn_minus).apply(E13)
+  E15 = step.Zip().apply((E14, E12))
+  E16 = step.Map(fn=fn_div).apply(E15)
+  return E16
+

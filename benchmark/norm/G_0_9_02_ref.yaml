@@ -1,0 +1,64 @@
+test_name: G_0_9_02
+inputs:
+- name: E0
+  dtype: Buffer(fp32, [D])
+  dims: [N]
+  data_gen: torch.rand
+
+fns:
+- name: Mean
+  apply: |
+    return [input[0].mean(dim=-1, keepdim=True).expand(D_value)]
+  input_dtype: Buffer(fp32, [D])
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_mean
+- name: Minus
+  apply: |
+    return [input[0] - input[1]]
+  input_dtype: ["Buffer(fp32, [D])", "Buffer(fp32, [D])"]
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_minus
+- name: Square
+  apply: |
+    return [input[0] * input[0]]
+  input_dtype: Buffer(fp32, [D])
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_square
+- name: AddEps
+  apply: |
+    return [input[0] + 1e-5]
+  input_dtype: Buffer(fp32, [D])
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_addeps
+- name: Sqrt
+  apply: |
+    return [torch.sqrt(input[0])]
+  input_dtype: Buffer(fp32, [D])
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_sqrt
+- name: Div
+  apply: |
+    return [input[0] / input[1]]
+  input_dtype: ["Buffer(fp32, [D])", "Buffer(fp32, [D])"]
+  output_dtype: Buffer(fp32, [D])
+  func_name: fn_div
+
+outputs:
+- name: S0
+  dtype: Buffer(fp32, [D])
+  dims: [N]
+  data_transform:
+  - |-
+    (input_data['E0'] - input_data['E0'].mean(dim=1, keepdim=True)) / torch.sqrt(input_data['E0'].var(dim=1, keepdim=True, unbiased=False) + 1e-5)
+  
+impl: |-
+  E1 = step.Map(fn=fn_mean).apply(E0)
+  E2 = step.Zip().apply((E0, E1))
+  E3 = step.Map(fn=fn_minus).apply(E2)
+  E4 = step.Map(fn=fn_square).apply(E3)
+  E5 = step.Map(fn=fn_mean).apply(E4)
+  E6 = step.Map(fn=fn_addeps).apply(E5)
+  E7 = step.Map(fn=fn_sqrt).apply(E6)
+  E8 = step.Zip().apply((E3, E7))
+  E9 = step.Map(fn=fn_div).apply(E8)
+  return E9

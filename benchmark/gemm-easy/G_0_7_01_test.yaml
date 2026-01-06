@@ -1,0 +1,33 @@
+test_name: G_0_7_01
+inputs:
+- name: E0
+  dtype: fp32
+  dims: [N, M, K]
+  data_gen: torch.rand
+- name: E1
+  dtype: fp32
+  dims: [N, M, K]
+  data_gen: torch.rand
+
+fns:
+- name: Mul
+  apply: |
+    return [input[0] * input[1]]
+  input_dtype: [fp32, fp32]
+  output_dtype: fp32
+  func_name: fn_mul
+- name: Add
+  apply: |
+    return [state[0] + input[0]]
+  init: [0]
+  input_dtype: Buffer(fp32, [N, M])
+  output_dtype: Buffer(fp32, [N, M])
+  func_name: fn_add
+
+outputs:
+- name: S0
+  dtype: fp32
+  dims: [N, M]
+  data_transform:
+  - |-
+    (input_data['E0'] * input_data['E1']).sum(0, keepdim=False)

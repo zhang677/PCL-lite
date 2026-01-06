@@ -1,0 +1,66 @@
+test_name: G_0_8_01
+inputs:
+- name: E0
+  dtype: fp32
+  dims: [D, N]
+  data_gen: torch.rand
+
+fns:
+- name: Square
+  apply: |
+    return [input[0] * input[0]]
+  input_dtype: fp32
+  output_dtype: fp32
+  func_name: fn_square
+- name: DivByD
+  apply: |
+    return [input[0] / D_value]
+  input_dtype: fp32
+  output_dtype: fp32
+  func_name: fn_divbyD
+- name: Add
+  apply: |
+    return [state[0] + input[0]]
+  init: [0]
+  input_dtype: fp32
+  output_dtype: fp32
+  func_name: fn_add
+- name: Sqrt
+  apply: |
+    return [torch.sqrt(input[0])]
+  input_dtype: fp32
+  output_dtype: fp32
+  func_name: fn_sqrt
+- name: AddEps
+  apply: |
+    return [input[0] + 1e-5]
+  input_dtype: fp32
+  output_dtype: fp32
+  func_name: fn_addeps
+- name: Div
+  apply: |
+    return [input[0] / input[1]]
+  input_dtype: [fp32, fp32]
+  output_dtype: fp32
+  func_name: fn_div
+
+outputs:
+- name: S0
+  dtype: fp32
+  dims: [D, N]
+  data_transform:
+  - |-
+    T0 = input_data['E0'].pow(2).mean(dim=1, keepdim=True)
+    T1 = torch.sqrt(T0 + 1e-5)
+    input_data['E0'] / T1
+
+impl: |-
+  E1 = step.Map(fn=fn_square).apply(E0)
+  E2 = step.Accum(fn=fn_add, b=1).apply(E1)
+  E3 = step.Map(fn=fn_divbyD).apply(E2)
+  E4 = step.Map(fn=fn_addeps).apply(E3)
+  E5 = step.Map(fn=fn_sqrt).apply(E4)
+  E6 = step.Repeat(n=D).apply(E5)
+  E7 = step.Zip().apply((E0, E6))
+  E8 = step.Map(fn=fn_div).apply(E7)
+  return E8

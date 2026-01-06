@@ -1,0 +1,58 @@
+test_name: G_0_3_03
+global: |
+  E_value = 3
+  ctx[E] = E_value
+  softmax = torch.nn.Softmax(dim=-1)
+
+inputs:
+  - name: E0
+    dtype: fp32
+    dims: [K, M]
+    data_gen: torch.randn
+
+parameters:
+  - name: Wg
+    dtype: fp32
+    dims: [E, K]
+    data_gen: torch.randn
+
+fns:
+  - name: Gate
+    apply: |
+      return [softmax(input[0] @ input_data['Wg'])]
+    input_dtype: Buffer(fp32, [K])
+    output_dtype: Buffer(fp32, [E])
+    func_name: fn_gate
+
+  - name: Top1
+    apply: |
+      _, indices = torch.topk(input[0], 1, dim=-1)
+      multihot = torch.zeros_like(input[0], dtype=torch.float32)
+      multihot.scatter_(-1, indices, 1.0)
+      return [multihot]
+    input_dtype: Buffer(fp32, [E])
+    output_dtype: Multihot(fp32, E)
+    func_name: fn_top1
+
+outputs:
+  - name: S0
+    dtype: Multihot(fp32, E)
+    dims: [M]
+    data_transform:
+      - |
+        affinity = softmax(input_data['E0'] @ input_data['Wg'])
+        _, indices = torch.topk(affinity, 1, dim=-1)
+        multihot = torch.zeros_like(affinity, dtype=torch.float32)
+        multihot.scatter(-1, indices, 1.0)
+  - name: S1
+    dtype: Buffer(fp32, [E])
+    dims: [M]
+    data_transform:
+      - |
+        affinity
+  
+impl: |
+  E1 = step.Bufferize(a=1).apply(E0)
+  E2 = step.Map(fn=fn_gate).apply(E1)
+  E3 = step.Map(fn=fn_top1).apply(E2)
+  return E3, E2

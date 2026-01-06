@@ -1,0 +1,50 @@
+test_name: G_0_7_03
+global: |
+  sigmoid = torch.nn.Sigmoid()
+
+inputs:
+  - name: E0
+    dtype: fp32
+    dims: [K, M]
+    data_gen: torch.randn
+
+parameters:
+  - name: Wg
+    dtype: fp32
+    dims: [K]
+    data_gen: torch.randn
+  
+fns:
+  - name: Gate
+    apply: |
+      return [sigmoid(input[0] @ input_data['Wg'])]
+    input_dtype: Buffer(fp32, [K])
+    output_dtype: fp32
+    func_name: fn_gate
+  
+  - name: Top3
+    apply: |
+      _, indices = torch.topk(input[0], 3, dim=0)
+      multihot = torch.zeros_like(input[0], dtype=torch.float32)
+      multihot.scatter_(0, indices, 1.0)
+      return [multihot]
+    input_dtype: Buffer(fp32, [M])
+    output_dtype: Buffer(fp32, [M])
+    func_name: fn_top3
+  
+outputs:
+  - name: S0
+    dtype: fp32
+    dims: [M]
+    data_transform:
+      - |
+        affinity = sigmoid(input_data['E0'] @ input_data['Wg'])
+        _, indices = torch.topk(affinity, 3, dim=0)
+        multihot = torch.zeros_like(affinity, dtype=torch.float32)
+        multihot.scatter(0, indices, 1.0)
+  - name: S1
+    dtype: fp32
+    dims: [M]
+    data_transform:
+      - |
+        affinity

@@ -1,0 +1,69 @@
+test_name: G_0_6_01
+inputs:
+  - name: E0
+    dtype: fp32
+    dims: [M, N]
+    data_gen: torch.rand
+  - name: E1
+    dtype: Buffer(fp32, [D])
+    dims: [M, N]
+    data_gen: torch.rand
+  
+fns:
+  - name: ExpMaxDiff
+    apply: |
+      m_t, e_t, d_t = state # scalar, scalar, scalar
+      s_t = input[0]
+      m_next = torch.max(m_t, s_t)
+      dm_next = m_t - m_next
+      e_next = torch.exp(s_t - m_next)
+      d_next = torch.exp(dm_next)
+      return [m_next, e_next, d_next]
+    init: [-inf, 0, 0]
+    input_dtype: fp32
+    output_dtype: [fp32, fp32, fp32]
+    func_name: fn_expmaxdiff
+
+  - name: DivSum
+    apply: |
+      v_t, e_t, d_t = input # [D], scalar, scalar
+      l_t, o_t = state # sclar, [D]
+      l_prim_t = d_t * l_t
+      l_next = e_t + l_prim_t
+      o_next = l_prim_t * o_t / l_next + e_t * v_t / l_next
+      return [l_next, o_next]
+    init: [0, 0]
+    input_dtype: ["Buffer(fp32, [D])", fp32, fp32]
+    output_dtype: ["Buffer(fp32, [D])", "Buffer(fp32, [D])"]
+    func_name: fn_divsum
+
+  - name: GetSecondThird
+    apply: |
+      return [input[1], input[2]]
+    input_dtype: [fp32, fp32, fp32]
+    output_dtype: [fp32, fp32]
+    func_name: fn_getsecondthird
+  
+  - name: GetSecond
+    apply: |
+      return [input[1]]
+    input_dtype: ["Buffer(fp32, [D])", "Buffer(fp32, [D])"]
+    output_dtype: "Buffer(fp32, [D])"
+    func_name: fn_getsecond
+
+outputs:
+  - name: S0
+    dtype: fp32
+    dims: [D, N]
+    data_transform:
+      - |
+        torch.bmm(torch.softmax(input_data['E0'], 1).unsqueeze(1), input_data['E1']).squeeze(1)
+
+impl: |
+  E3 = step.Scan(fn=fn_expmaxdiff, b=1).apply(E0)
+  E4 = step.Map(fn=fn_getsecondthird).apply(E3)
+  E5 = step.Zip().apply((E1, E4))
+  E6 = step.Accum(fn=fn_divsum, b=1).apply(E5)
+  E7 = step.Map(fn=fn_getsecond).apply(E6)
+  E2 = step.Streamify().apply(E7)
+  return E2

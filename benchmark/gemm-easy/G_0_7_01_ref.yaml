@@ -1,0 +1,43 @@
+test_name: G_0_7_01
+inputs:
+- name: E0
+  dtype: fp32
+  dims: [N, M, K]
+  data_gen: torch.rand
+- name: E1
+  dtype: fp32
+  dims: [N, M, K]
+  data_gen: torch.rand
+
+fns:
+- name: Mul
+  apply: |
+    return [input[0] * input[1]]
+  input_dtype: [fp32, fp32]
+  output_dtype: fp32
+  func_name: fn_mul
+- name: Add
+  apply: |
+    return [state[0] + input[0]]
+  init: [0]
+  input_dtype: Buffer(fp32, [N, M])
+  output_dtype: Buffer(fp32, [N, M])
+  func_name: fn_add
+
+outputs:
+- name: S0
+  dtype: fp32
+  dims: [N, M]
+  data_transform:
+  - |-
+    (input_data['E0'] * input_data['E1']).sum(0, keepdim=False)
+
+impl: |-
+  E2 = step.Zip().apply((E0, E1)) # E2: {dtype: [fp32, fp32], dims: [N, M, K]} 
+  E3 = step.Map(fn=fn_mul).apply(E2) # E3: {dtype: fp32, dims: [N, M, K]}
+  E4 = step.Bufferize(a=2).apply(E3) # E4: {dtype: Buffer(fp32, [N, M]), dims: [K]}
+  E5 = step.Promote(b=1).apply(E4) # E5: {dtype: Buffer(fp32, [N, M]), dims: [K, 1]}
+  E6 = step.Accum(fn=fn_add, b=1).apply(E5) # E6: {dtype: Buffer(fp32, [N, M]), dims: [1]}
+  E7 = step.Streamify().apply(E6) # E7: {dtype: fp32, dims: [N, M, 1]}
+  E8 = step.Flatten(L=[2]).apply(E7) # E8: {dtype: fp32, dims: [N, M]}
+  return E8

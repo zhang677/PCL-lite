@@ -1,0 +1,56 @@
+test_name: G_0_3_02
+inputs:
+  - name: E0
+    dtype: fp32
+    dims: [N, M]
+    data_gen: torch.ones
+  - name: E1
+    dtype: Buffer(fp32, [D])
+    dims: [N, M]
+    data_gen: torch.randn
+
+fns:
+  - name: Sum
+    apply: |
+      return [input[0] + state[0]]
+    init: [-1]
+    input_dtype: fp32
+    output_dtype: fp32
+    func_name: fn_sum
+  
+  - name: GptJRoPE
+    apply: |
+      freq = input[0] / (10000**(torch.arange(0, D_value, 2, dtype=torch.float) / ctx[D]))
+      cos = freq.cos()
+      sin = freq.sin()
+      x1 = input[1][..., ::2]
+      x2 = input[1][..., 1::2]
+      o1 = x1 * cos - x2 * sin
+      o2 = x1 * sin + x2 * cos
+      return [torch.stack((o1, o2), dim=-1).flatten(-2)]
+    input_dtype: [fp32, "Buffer(fp32, [D])"]
+    output_dtype: Buffer(fp32, [D])
+    func_name: fn_gptjrope
+  
+outputs:
+  - name: S0
+    dtype: Buffer(fp32, [D])
+    dims: [N, M]
+    data_transform:
+      - |
+        inv_freq = 1.0 / (10000**(torch.arange(0, ctx[D], 2, dtype=torch.float) / ctx[D]))
+        t = torch.arange(ctx[N], dtype=torch.float)
+        freqs = torch.einsum("i,j -> ij", t, inv_freq)
+        cos = freqs.cos()
+        sin = freqs.sin()
+        x1 = input_data['E1'][..., ::2]
+        x2 = input_data['E1'][..., 1::2]
+        o1 = x1 * cos - x2 * sin
+        o2 = x1 * sin + x2 * cos
+        torch.stack((o1, o2), dim=-1).flatten(-2)
+
+impl: |
+  E2 = step.Scan(fn=fn_sum, b=1).apply(E0)
+  E3 = step.Zip().apply((E2, E1))
+  E4 = step.Map(fn=fn_gptjrope).apply(E3)
+  return E4
