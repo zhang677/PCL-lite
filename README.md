@@ -1,7 +1,7 @@
 # PCL-lite
 An adaptive self-improvement LLM agentic system for ML library development. We choose [STeP](https://ppl.stanford.edu/papers/YARCH24_STEP.pdf) as the target ASPL for next-generation RDA. Please run the following commands in order and under the `/PCL-lite` folder. 
 
-[paper](https://arxiv.org/abs/2502.02534) [blog](https://zhang677.github.io/blog_md/aspl.html)
+[paper](https://arxiv.org/abs/2502.02534) [blog](https://zhang677.github.io/blog_md/aspl.html). PCL-lite targets an [early version](https://ppl.stanford.edu/papers/YARCH24_STEP.pdf) of STeP. Please check the latest STeP paper [here](https://arxiv.org/pdf/2511.07776).
 
 ## Install
 
@@ -58,14 +58,19 @@ Validate the test and reference yamls under `/benchmark` and `/prompts`
 
 ## Cite
 
-If you find this work useful, please cite it:
+If you find this work useful, please cite these papers:
 
 ```bibtex
-@article{zhang2025adaptive,
+@inproceedings{zhang2025adaptive,
   title={Adaptive Self-improvement LLM Agentic System for ML Library Development},
   author={Zhang, Genghan and Liang, Weixin and Hsu, Olivia and Olukotun, Kunle},
-  journal={arXiv preprint},
-  year={2025},
-  url={https://arxiv.org/abs/2502.02534},
+  booktitle={Forty-second International Conference on Machine Learning}
+}
+
+@article{sohn2025streaming,
+  title={Streaming Tensor Program: A streaming abstraction for dynamic parallelism},
+  author={Sohn, Gina and Zhang, Genghan and Hossfeld, Konstantin and Kim, Jungwoo and Sobotka, Nathan and Zhang, Nathan and Hsu, Olivia and Olukotun, Kunle},
+  journal={arXiv preprint arXiv:2511.07776},
+  year={2025}
 }
 ```
